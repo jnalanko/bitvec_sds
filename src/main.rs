@@ -1,4 +1,3 @@
-mod bps_sada;
 mod rank_support_v;
 mod select_support_mcl;
 mod traits;
@@ -7,102 +6,9 @@ mod util;
 use std::sync::Arc;
 use bitvec::prelude::*;
 
-use crate::{bps_sada::BpSupportSadaBitvec, rank_support_v::RankSupportV, traits::{Pat1, Sel1}};
-
-// ---- paste the whole module from the previous message above this line ----
-// or put it in bp_support_sada.rs and `mod bp_support_sada; use bp_support_sada::*;`
-
-fn bits_from_bp_string(s: &str) -> Vec<bool> {
-    s.chars()
-        .map(|c| match c {
-            '(' => true,
-            ')' => false,
-            _ => panic!("invalid char {c:?}, expected '(' or ')'"),
-        })
-        .collect()
-}
-
-fn bitvec_from_bools(bits: &[bool]) -> BitVec<u64, Lsb0> {
-    let mut bv: BitVec<u64, Lsb0> = BitVec::with_capacity(bits.len());
-    bv.extend(bits.iter().copied());
-    bv
-}
-
+use crate::{rank_support_v::RankSupportV, traits::{Pat1, Sel1}};
 fn main() {
-
     benchmark();
-    return;
-
-    // Example balanced parentheses sequence: "(()())()"
-    // Indices:  0 1 2 3 4 5 6 7
-    // Bits:     1 1 0 1 0 0 1 0
-    let bp_str = "(()())()";
-    let bits = bits_from_bp_string(bp_str);
-    let bv = Arc::new(bitvec_from_bools(&bits));
-
-    // Build Sadakane support structure
-    // (Using default SML=256 and MED_DEG=32 and SimpleRank/SimpleSelect backends.)
-    let bp = BpSupportSadaBitvec::<256, 32>::build(bv);
-
-    println!("BP string: {bp_str}");
-    println!("Length: {}", bp.len());
-    println!();
-
-    // Show excess array
-    println!("excess(i) for i=0..n-1:");
-    for i in 0..bp.len() {
-        print!("{:2}: {:2}   ", i, bp.excess(i));
-    }
-    println!("\n");
-
-    // rank(i) = #opens up to and including i
-    println!("rank(i) (#opens up to i):");
-    for i in 0..bp.len() {
-        print!("{:2}: {:2}   ", i, bp.rank(i));
-    }
-    println!("\n");
-
-    // select(k): position of k-th open (k>=1)
-    let total_opens = bp.rank(bp.len() - 1);
-    println!("select(k) positions of opens:");
-    for k in 1..=total_opens {
-        println!("  select({k}) = {}", bp.select(k));
-    }
-    println!();
-
-    // Demonstrate find_close for each open
-    println!("find_close(i) for each '(' position:");
-    for i in 0..bp.len() {
-        // we don't have direct access to the bitvector here,
-        // but for demo we can re-parse bp_str:
-        if bp_str.as_bytes()[i] == b'(' {
-            let j = bp.find_close(i);
-            println!("  open at {i} closes at {j}   substring: {}", &bp_str[i..=j]);
-        }
-    }
-    println!();
-
-    // Demonstrate find_open for each close
-    println!("find_open(i) for each ')' position:");
-    for i in 0..bp.len() {
-        if bp_str.as_bytes()[i] == b')' {
-            let j = bp.find_open(i);
-            println!("  close at {i} opens at {j}   substring: {}", &bp_str[j..=i]);
-        }
-    }
-    println!();
-
-    // Demonstrate enclose for each position
-    println!("enclose(i): nearest enclosing '(' for i (or n if none):");
-    for i in 0..bp.len() {
-        let e = bp.enclose(i);
-        if e < bp.len() {
-            let c = bp.find_close(e);
-            println!("  i={i}: enclose={e}, pair=({e},{c}) -> {}", &bp_str[e..=c]);
-        } else {
-            println!("  i={i}: enclose = n (none)");
-        }
-    }
 }
 
 fn benchmark() {
