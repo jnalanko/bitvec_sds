@@ -5,6 +5,7 @@ mod util;
 
 use std::sync::Arc;
 use bitvec::prelude::*;
+use rand_xoshiro::{Xoshiro256PlusPlus, rand_core::{RngCore, SeedableRng}};
 
 use crate::{rank_support_v::RankSupportV, traits::{Pat1, Sel1}};
 fn main() {
@@ -13,11 +14,12 @@ fn main() {
 
 fn benchmark() {
     // Generate a bitvector of with 8 billion bits randomly set
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(123);
     let n = 8_000_000_000usize;
     let mut bv: BitVec<u64, Lsb0> = BitVec::with_capacity(n);
     println!("Generating random bitvector of length {n}...");
     for _ in 0..n {
-        bv.push(rand::random::<bool>());
+        bv.push(rng.next_u64() % 2 == 0);
     }
     let n_ones = bv.count_ones();
 
@@ -30,7 +32,7 @@ fn benchmark() {
     println!("Generating {n_queries} random query positions...");
     let mut query_positions: Vec<usize> = Vec::with_capacity(n_queries);
     for _ in 0..n_queries {
-        let pos = rand::random::<u64>() as usize % n;
+        let pos = rng.next_u64() as usize % n;
         query_positions.push(pos);
     }
 
@@ -56,7 +58,7 @@ fn benchmark() {
     let max_select_query = n_ones;
     let mut select_query_positions: Vec<usize> = Vec::with_capacity(n_queries);
     for _ in 0..n_queries {
-        let pos = rand::random::<u64>() as usize % max_select_query;
+        let pos = rng.next_u64() as usize % max_select_query;
         select_query_positions.push(pos);
     }
 
