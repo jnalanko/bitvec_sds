@@ -187,3 +187,67 @@ pub fn count_args_by_words<P: SelectTrait>(bv: &BitVec<u64, Lsb0>) -> usize {
     }
     sum as usize
 }
+
+/// Random-access u32 sequence used for construction.
+/// Must be stable across calls (same len + same values for same indices).
+pub trait RandomAccessU32 {
+    fn len(&self) -> usize;
+    fn get(&self, idx: usize) -> u32;
+}
+
+// Allow passing references easily (&T where T: RandomAccessU32).
+impl<T: RandomAccessU32 + ?Sized> RandomAccessU32 for &T {
+    #[inline]
+    fn len(&self) -> usize {
+        (*self).len()
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u32 {
+        (*self).get(idx)
+    }
+}
+
+// Common impls
+impl RandomAccessU32 for [u32] {
+    #[inline]
+    fn len(&self) -> usize {
+        <[u32]>::len(self)
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u32 {
+        self[idx]
+    }
+}
+
+impl RandomAccessU32 for Vec<u32> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u32 {
+        self[idx]
+    }
+}
+
+impl RandomAccessU32 for Box<[u32]> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u32 {
+        self.as_ref()[idx]
+    }
+}
+
+impl RandomAccessU32 for Arc<[u32]> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u32 {
+        self.as_ref()[idx]
+    }
+}

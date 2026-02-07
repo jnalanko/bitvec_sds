@@ -145,6 +145,39 @@ struct Node<R, S> {
 }
 
 #[derive(Debug, Clone)]
+struct NodeBuilder {
+    lo: u32,
+    hi: u32, // exclusive
+    mid: u32,
+    bits: BitVec<u64, Lsb0>,
+    left: Option<usize>,
+    right: Option<usize>,
+}
+
+fn build_template(nodes: &mut Vec<NodeBuilder>, lo: u32, hi: u32) -> usize {
+    let mid = lo + (hi - lo) / 2;
+
+    let idx = nodes.len();
+    nodes.push(NodeBuilder {
+        lo,
+        hi,
+        mid,
+        bits: BitVec::new(),
+        left: None,
+        right: None,
+    });
+
+    if hi - lo > 1 {
+        let left = build_template(nodes, lo, mid);
+        let right = build_template(nodes, mid, hi);
+        nodes[idx].left = Some(left);
+        nodes[idx].right = Some(right);
+    }
+    idx
+}
+
+
+#[derive(Debug, Clone)]
 pub struct WaveletTree<R, S> {
     nodes: Vec<Node<R, S>>,
     n: usize,
@@ -157,103 +190,106 @@ where
     R: RankSupport,
     S: SelectSupport,
 {
+
     /// Build a wavelet tree for values in [lo, hi).
     ///
-    /// `build_rank` and `build_sel` construct rank/select structures for each node's bitvector.
-    pub fn new<FR, FS>(data: &[u32], lo: u32, hi: u32, mut build_rank: FR, mut build_sel: FS) -> Self
+    /// `data` is any random-access structure providing len() and get(i)->u32.
+    pub fn new<D, FR, FS>(
+        data: D,
+        lo: u32,
+        hi: u32,
+        mut build_rank: FR,
+        mut build_sel: FS,
+    ) -> Self
     where
+        D: RandomAccessU32,
         FR: FnMut(Arc<BitVec<u64, Lsb0>>) -> R,
         FS: FnMut(Arc<BitVec<u64, Lsb0>>) -> S,
     {
         assert!(lo < hi, "alphabet range must be non-empty");
-        for &v in data {
+
+        let n = data.len();
+
+        // Build topology (independent of data order/length).
+        let k_nodes_guess: usize = ((hi - lo) as usize).saturating_mul(2).saturating_sub(1);
+        let mut builders = Vec::with_capacity(k_nodes_guess);
+        let root = build_template(&mut builders, lo, hi);
+        debug_assert_eq!(root, 0);
+
+        // Pass 1: validate + count how many bits each internal node will store.
+        let mut counts = vec![0usize; builders.len()];
+        for i in 0..n {
+            let v = data.get(i);
             assert!(v >= lo && v < hi, "value {v} out of range [{lo},{hi})");
+
+            let mut node_idx = 0usize;
+            loop {
+                let node = &builders[node_idx];
+                if node.hi - node.lo == 1 {
+                    break; // leaf
+                }
+                counts[node_idx] += 1;
+                node_idx = if v >= node.mid {
+                    node.right.expect("internal node must have right child")
+                } else {
+                    node.left.expect("internal node must have left child")
+                };
+            }
         }
 
-        let mut wt = WaveletTree {
-            nodes: Vec::new(),
-            n: data.len(),
-            lo,
-            hi,
-        };
-
-        fn build_rec<R, S, FR, FS>(
-            wt: &mut WaveletTree<R, S>,
-            seq: &[u32],
-            lo: u32,
-            hi: u32,
-            build_rank: &mut FR,
-            build_sel: &mut FS,
-        ) -> usize
-        where
-            R: RankSupport,
-            S: SelectSupport,
-            FR: FnMut(Arc<BitVec<u64, Lsb0>>) -> R,
-            FS: FnMut(Arc<BitVec<u64, Lsb0>>) -> S,
-        {
-            let mid = lo + (hi - lo) / 2;
-
-            // Leaf interval size 1.
-            if hi - lo == 1 {
-                let bits = Arc::new(BitVec::<u64, Lsb0>::new());
-                let rank = build_rank(bits.clone());
-                let sel = build_sel(bits.clone());
-                wt.nodes.push(Node {
-                    lo,
-                    hi,
-                    mid,
-                    bits,
-                    rank,
-                    sel,
-                    left: None,
-                    right: None,
-                });
-                return wt.nodes.len() - 1;
+        // Allocate exact bitvector capacities.
+        for (i, b) in builders.iter_mut().enumerate() {
+            if b.hi - b.lo > 1 {
+                b.bits = BitVec::with_capacity(counts[i]);
             }
+        }
 
-            let mut bits = BitVec::<u64, Lsb0>::with_capacity(seq.len());
-            let mut left_vals = Vec::new();
-            let mut right_vals = Vec::new();
-            left_vals.reserve(seq.len());
-            right_vals.reserve(seq.len());
+        // Pass 2: fill bitvectors by pushing bits along the root-to-leaf path.
+        for i in 0..n {
+            let v = data.get(i);
 
-            for &v in seq {
-                let go_right = v >= mid;
-                bits.push(go_right);
-                if go_right {
-                    right_vals.push(v);
-                } else {
-                    left_vals.push(v);
+            let mut node_idx = 0usize;
+            loop {
+                // Copy out the routing fields to avoid borrow issues.
+                let (lo_i, hi_i, mid_i, left_i, right_i) = {
+                    let node = &builders[node_idx];
+                    (node.lo, node.hi, node.mid, node.left, node.right)
+                };
+
+                if hi_i - lo_i == 1 {
+                    break; // leaf
                 }
+
+                let go_right = v >= mid_i;
+                builders[node_idx].bits.push(go_right);
+
+                node_idx = if go_right {
+                    right_i.expect("internal node must have right child")
+                } else {
+                    left_i.expect("internal node must have left child")
+                };
             }
+        }
 
-            let bits = Arc::new(bits);
-
+        // Finalize into Node<R,S> with rank/select supports.
+        let mut nodes = Vec::with_capacity(builders.len());
+        for b in builders {
+            let bits = Arc::new(b.bits);
             let rank = build_rank(bits.clone());
             let sel = build_sel(bits.clone());
-
-            let node_idx = wt.nodes.len();
-            wt.nodes.push(Node {
-                lo,
-                hi,
-                mid,
+            nodes.push(Node {
+                lo: b.lo,
+                hi: b.hi,
+                mid: b.mid,
                 bits,
                 rank,
                 sel,
-                left: None,
-                right: None,
+                left: b.left,
+                right: b.right,
             });
-
-            let left = build_rec(wt, &left_vals, lo, mid, build_rank, build_sel);
-            let right = build_rec(wt, &right_vals, mid, hi, build_rank, build_sel);
-            wt.nodes[node_idx].left = Some(left);
-            wt.nodes[node_idx].right = Some(right);
-
-            node_idx
         }
 
-        let _root = build_rec(&mut wt, data, lo, hi, &mut build_rank, &mut build_sel);
-        wt
+        Self { nodes, n, lo, hi }
     }
 
     pub fn serialize(&self, mut writer: &mut impl std::io::Write) {
