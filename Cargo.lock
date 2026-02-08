@@ -35,6 +35,7 @@ dependencies = [
  "rand_xoshiro",
  "serde",
  "serde_json",
+ "simple-sds-sbwt",
 ]
 
 [[package]]
@@ -209,6 +210,15 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "simple-sds-sbwt"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96130dd24b2dcbbb34bf77927c920b7e6e51df0bb03b592ab19b753fa7c4930b"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
