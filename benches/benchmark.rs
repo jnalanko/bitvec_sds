@@ -128,15 +128,15 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
     let start = std::time::Instant::now();
 
     // Run the queries
-    let mut sum_of_answers = 0_usize;
+    let mut sum_of_select_answers = 0_usize;
     for (query_idx, query) in select_query_positions.iter().enumerate() {
-        let ans = simple_sds.select(*query).unwrap();
+        let ans = simple_sds.select(*query - 1).unwrap(); // simple_sds does 1-based indexing in select
         sum_of_select_answers += ans;
         if query_idx < 10 {
             eprintln!("{} {}", query_idx, ans);
         }
     }
-    println!("Sum of all select answers: {}", sum_of_answers);
+    println!("Sum of all select answers: {}", sum_of_select_answers);
 
     // Print the elapsed time per query in nanoseconds
     let elapsed = start.elapsed();
