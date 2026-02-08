@@ -225,6 +225,63 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
         }
     }
 
+    /// Unchecked 1-based select: no bounds checks on any array access.
+    ///
+    /// # Safety
+    /// `i` must satisfy `1 <= i <= self.occurrences()` and the structure
+    /// must have been initialised with a bitvector.
+    #[inline]
+    pub unsafe fn select_unchecked(&self, i: usize) -> usize {
+        unsafe {
+            let bv = self.bv.as_ref().unwrap_unchecked();
+            let words = bv.as_raw_slice();
+
+            let occ = i - 1;
+            let sb_idx = occ >> 12;
+            let offset = occ & 0xFFF;
+
+            match self.blocks.get_unchecked(sb_idx) {
+                Block::Long(pos) => *pos.get_unchecked(offset),
+                Block::Mini { mini, .. } => {
+                    if (offset & 0x3F) == 0 {
+                        *self.superblock.get_unchecked(sb_idx)
+                            + (*mini.get_unchecked(offset >> 6) as usize)
+                    } else {
+                        let group = offset >> 6;
+                        let need = (offset & 0x3F) as u32;
+
+                        let pos = *self.superblock.get_unchecked(sb_idx)
+                            + (*mini.get_unchecked(group) as usize)
+                            + 1;
+
+                        let word_pos = pos >> 6;
+                        let word_off = (pos & 63) as u8;
+
+                        let w0 = *words.get_unchecked(word_pos);
+                        let args = P::args_in_first_word(w0, word_off);
+                        if args >= need {
+                            return (word_pos << 6)
+                                + (P::ith_arg_pos_in_first_word(w0, need, word_off) as usize);
+                        }
+
+                        let mut sum_args = args;
+                        let mut wpos = word_pos + 1;
+                        loop {
+                            let w = *words.get_unchecked(wpos);
+                            let a = P::args_in_word(w);
+                            if sum_args + a >= need {
+                                return (wpos << 6)
+                                    + (P::ith_arg_pos_in_word(w, need - sum_args) as usize);
+                            }
+                            sum_args += a;
+                            wpos += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[inline]
     pub fn operator(&self, i: usize) -> usize {
         self.select(i)
@@ -583,6 +640,19 @@ mod tests {
             assert_eq!(ss.select(k), naive_select_ones(&bv, k));
         }
     }
+
+    #[test]
+    fn mcl_select_unchecked_matches_safe() {
+        let bv: BitVec<u64, Lsb0> = bitvec![u64, Lsb0;
+            1,0,1,1,0,0,1,0,  1,1,1,0,0,1,0,0
+        ];
+        let bv = Arc::new(bv);
+        let ss = SelectSupportMcl::<Sel1>::new(bv.clone());
+        let m = ss.occurrences();
+        for k in 1..=m {
+            assert_eq!(unsafe { ss.select_unchecked(k) }, ss.select(k));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -741,12 +811,14 @@ mod select_mcl_stress_tests {
             for &k in &ks_ones {
                 let got = sel1.select(k);
                 let exp = ones_pos[k - 1];
-                //eprintln!("{} {}", exp, got);
                 assert_eq!(
                     got, exp,
                     "case {case}: Sel1 select mismatch at k={k} (ones={ones})"
                 );
-                assert!(arc[got], "case {case}: Sel1 returned non-one at pos={got}");
+                assert_eq!(
+                    unsafe { sel1.select_unchecked(k) }, got,
+                    "case {case}: Sel1 select_unchecked mismatch at k={k}"
+                );
             }
 
             // Validate zeros
@@ -757,7 +829,10 @@ mod select_mcl_stress_tests {
                     got, exp,
                     "case {case}: Sel0 select mismatch at k={k} (zeros={zeros})"
                 );
-                assert!(!arc[got], "case {case}: Sel0 returned non-zero at pos={got}");
+                assert_eq!(
+                    unsafe { sel0.select_unchecked(k) }, got,
+                    "case {case}: Sel0 select_unchecked mismatch at k={k}"
+                );
             }
         }
     }
