@@ -106,8 +106,12 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
 
     // Run the queries
     let mut sum_of_select_answers = 0_usize;
-    for &pos in &select_query_positions {
-        sum_of_select_answers += select_support.select(pos);
+    for (query_idx, query) in select_query_positions.iter().enumerate() {
+        let ans = select_support.select(*query);
+        sum_of_select_answers += ans;
+        if query_idx < 10 {
+            eprintln!("{} {}", query_idx, ans);
+        }
     }
     println!("Sum of all select answers: {}", sum_of_select_answers);
 
@@ -123,8 +127,12 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
 
     // Run the queries
     let mut sum_of_answers = 0_usize;
-    for &pos in &select_query_positions {
-        sum_of_answers += simple_sds.select(pos).unwrap();
+    for (query_idx, query) in select_query_positions.iter().enumerate() {
+        let ans = simple_sds.select(*query).unwrap();
+        sum_of_select_answers += ans;
+        if query_idx < 10 {
+            eprintln!("{} {}", query_idx, ans);
+        }
     }
     println!("Sum of all select answers: {}", sum_of_answers);
 
