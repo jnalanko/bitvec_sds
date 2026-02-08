@@ -110,9 +110,8 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
 
     // Run the queries
     let mut sum_of_select_answers = 0_usize;
-    for (query_idx, query) in select_query_positions.iter().enumerate() {
-        let ans = select_support.select(*query);
-        sum_of_select_answers += ans;
+    for &query in &select_query_positions {
+        sum_of_select_answers += select_support.select(query);
     }
     println!("Sum of all select answers: {}", sum_of_select_answers);
 
@@ -120,6 +119,20 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
     let elapsed = start.elapsed();
     let avg_time_per_select_query = elapsed.as_secs_f64() / n_queries as f64;
     println!("Average time per select query: {:.2} ns", avg_time_per_select_query * 1e9);
+
+    println!("Running select queries on SelectSupportMcl (unchecked)");
+
+    let start = std::time::Instant::now();
+
+    let mut sum_of_select_answers_unchecked = 0_usize;
+    for &query in &select_query_positions {
+        sum_of_select_answers_unchecked += unsafe { select_support.select_unchecked(query) };
+    }
+    println!("Sum of all select answers: {}", sum_of_select_answers_unchecked);
+
+    let elapsed = start.elapsed();
+    let avg_time_per_select_query = elapsed.as_secs_f64() / n_queries as f64;
+    println!("Average time per select query (unchecked): {:.2} ns", avg_time_per_select_query * 1e9);
 
     println!("Running select queries on simple_sds bit vector");
 
