@@ -394,38 +394,39 @@ where
             return None;
         }
         if x >= node.hi {
-            // FULL value coverage => earliest position in this node interval
             return Some(l);
         }
 
         if node.hi - node.lo == 1 {
-            // x > node.lo already holds, so anything qualifies; earliest is l
             return Some(l);
         }
 
-        let left_idx = node.left as usize;
-        let right_idx = node.right as usize;
-
-        //let l0 = node.rank.rank0(l);
-        //let r0 = node.rank.rank0(r);
         let l1 = node.rank.rank1(l);
         let r1 = node.rank.rank1(r);
-        let l0 = l - l1; // Rank0(l)
-        let r0 = r - r1; // Rank0(r)
+        let l0 = l - l1;
+        let r0 = r - r1;
 
-        let cand_left = self
-            .next_in_value_prefix_range(left_idx, l0, r0, x)
-            .and_then(|p_child| node.sel.select0(p_child + 1));
+        if x < node.mid {
+            // Right-child values are all >= mid > x, so only recurse left.
+            self.next_in_value_prefix_range(node.left as usize, l0, r0, x)
+                .and_then(|p| node.sel.select0(p + 1))
+        } else {
+            // x >= mid: every left-child value is < mid <= x, so the earliest
+            // 0-bit in [l,r) is a candidate with no recursion needed.
+            let cand_left = if l0 < r0 {
+                node.sel.select0(l0 + 1) // first 0-bit in [l, r)
+            } else {
+                None
+            };
+            let cand_right = self
+                .next_in_value_prefix_range(node.right as usize, l1, r1, x)
+                .and_then(|p| node.sel.select1(p + 1));
 
-        let cand_right = self
-            .next_in_value_prefix_range(right_idx, l1, r1, x)
-            .and_then(|p_child| node.sel.select1(p_child + 1));
-
-        match (cand_left, cand_right) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (None, None) => None,
+            match (cand_left, cand_right) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (Some(a), None) => Some(a),
+                (None, b) => b,
+            }
         }
     }
 
@@ -435,51 +436,52 @@ where
         l: usize,
         r: usize,
         x: u32,
-        ) -> Option<usize> {
-            if l >= r {
-                return None;
-            }
+    ) -> Option<usize> {
+        if l >= r {
+            return None;
+        }
 
-            let node = &self.nodes[node_idx];
+        let node = &self.nodes[node_idx];
 
-            if x <= node.lo {
-                return None;
-            }
-            if x >= node.hi {
-                // FULL value coverage => latest position in this node interval
-                return Some(r - 1);
-            }
+        if x <= node.lo {
+            return None;
+        }
+        if x >= node.hi {
+            return Some(r - 1);
+        }
 
-            if node.hi - node.lo == 1 {
-                // x > node.lo holds => anything qualifies; latest is r-1
-                return Some(r - 1);
-            }
+        if node.hi - node.lo == 1 {
+            return Some(r - 1);
+        }
 
-            let left_idx = node.left as usize;
-            let right_idx = node.right as usize;
+        let l1 = node.rank.rank1(l);
+        let r1 = node.rank.rank1(r);
+        let l0 = l - l1;
+        let r0 = r - r1;
 
-            let l1 = node.rank.rank1(l);
-            let r1 = node.rank.rank1(r);
-            let l0 = l - l1; // Rank0(l)
-            let r0 = r - r1; // Rank0(r)
-            //let l0 = node.rank.rank0(l);
-            //let r0 = node.rank.rank0(r);
-
-            let cand_left = self
-                .prev_in_value_prefix_range(left_idx, l0, r0, x)
-                .and_then(|p_child| node.sel.select0(p_child + 1));
-
+        if x < node.mid {
+            // Right-child values are all >= mid > x, so only recurse left.
+            self.prev_in_value_prefix_range(node.left as usize, l0, r0, x)
+                .and_then(|p| node.sel.select0(p + 1))
+        } else {
+            // x >= mid: every left-child value is < mid <= x, so the latest
+            // 0-bit in [l,r) is a candidate with no recursion needed.
+            let cand_left = if l0 < r0 {
+                node.sel.select0(r0) // last 0-bit in [l, r)
+            } else {
+                None
+            };
             let cand_right = self
-                .prev_in_value_prefix_range(right_idx, l1, r1, x)
-                .and_then(|p_child| node.sel.select1(p_child + 1));
+                .prev_in_value_prefix_range(node.right as usize, l1, r1, x)
+                .and_then(|p| node.sel.select1(p + 1));
 
             match (cand_left, cand_right) {
                 (Some(a), Some(b)) => Some(a.max(b)),
                 (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
+                (None, b) => b,
             }
         }
+    }
 
     /// Return the first position in [l, r) within this node (mapped to this node's coords).
     /// O(log k) via select mapping down/up.
