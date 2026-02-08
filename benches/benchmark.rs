@@ -11,7 +11,7 @@ fn main() {
     let n = 8_000_000_000usize; // Is a multiple of 64
     let mut bv_data = Vec::<u64>::with_capacity(n/64);
     println!("Generating random bitvector of length {n}...");
-    for _ in 0..n {
+    for _ in bv_data.len() {
         bv_data.push(rng.next_u64());
     }
 
