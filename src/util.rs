@@ -42,13 +42,26 @@ pub fn word_at(words: &[u64], len_bits: usize, widx: usize) -> u64 {
 
 /// Return the bit position (0..63) of the i-th 1 in `word` (i is 1-based).
 #[inline]
-pub fn select_in_word(mut word: u64, i: u32) -> u32 {
+pub fn select_in_word(word: u64, i: u32) -> u32 {
     debug_assert!(i >= 1);
-    // clear i-1 low 1-bits
-    for _ in 1..i {
-        word &= word - 1;
+
+    // O(1) path: compile with -C target-cpu=native (or +bmi2) on Haswell+.
+    #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+    {
+        use std::arch::x86_64::_pdep_u64;
+        // Safety: target_feature = "bmi2" guarantees pdep is available.
+        return unsafe { _pdep_u64(1u64 << (i - 1), word) }.trailing_zeros();
     }
-    word.trailing_zeros()
+
+    // Fallback: clear i-1 lowest set bits, then read position of the next one.
+    #[allow(unreachable_code)]
+    {
+        let mut w = word;
+        for _ in 1..i {
+            w &= w - 1;
+        }
+        w.trailing_zeros()
+    }
 }
 
 #[inline]
