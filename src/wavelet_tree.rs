@@ -419,10 +419,12 @@ where
         let left_idx = node.left.expect("internal node must have left");
         let right_idx = node.right.expect("internal node must have right");
 
-        let l0 = node.rank.rank0(l);
-        let r0 = node.rank.rank0(r);
+        //let l0 = node.rank.rank0(l);
+        //let r0 = node.rank.rank0(r);
         let l1 = node.rank.rank1(l);
         let r1 = node.rank.rank1(r);
+        let l0 = l - l1; // Rank0(l)
+        let r0 = r - r1; // Rank0(r)
 
         let cand_left = self
             .next_in_value_prefix_range(left_idx, l0, r0, x)
@@ -469,10 +471,12 @@ where
             let left_idx = node.left.expect("internal node must have left");
             let right_idx = node.right.expect("internal node must have right");
 
-            let l0 = node.rank.rank0(l);
-            let r0 = node.rank.rank0(r);
             let l1 = node.rank.rank1(l);
             let r1 = node.rank.rank1(r);
+            let l0 = l - l1; // Rank0(l)
+            let r0 = r - r1; // Rank0(r)
+            //let l0 = node.rank.rank0(l);
+            //let r0 = node.rank.rank0(r);
 
             let cand_left = self
                 .prev_in_value_prefix_range(left_idx, l0, r0, x)
@@ -509,8 +513,8 @@ where
                 .select0(p_child + 1)
                 .expect("select0 must exist for valid child position")
         } else {
-            let l1 = node.rank.rank1(l);
-            let r1 = node.rank.rank1(r);
+            let l1 = l - l0; // rank1
+            let r1 = r - r0; // rank1
             // Since [l,r) non-empty and left empty, right must be non-empty.
             let p_child = self.first_in_interval(right_idx, l1, r1);
             node.sel
@@ -537,8 +541,10 @@ where
                 .select1(p_child + 1)
                 .expect("select1 must exist for valid child position")
         } else {
-            let l0 = node.rank.rank0(l);
-            let r0 = node.rank.rank0(r);
+            let l0 = l - l1; // rank0
+            let r0 = r - r1; // rank0
+            //let l0 = node.rank.rank0(l);
+            //let r0 = node.rank.rank0(r);
             let p_child = self.last_in_interval(left_idx, l0, r0);
             node.sel
                 .select0(p_child + 1)
