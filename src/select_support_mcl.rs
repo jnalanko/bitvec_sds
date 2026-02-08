@@ -171,6 +171,7 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
     }
 
     /// 1-based select: select(i) = position of i-th occurrence.
+    #[inline]
     pub fn select(&self, i: usize) -> usize {
         assert!(i > 0 && i <= self.arg_cnt, "select out of range");
         let bv = self.bv.as_ref().expect("SelectSupportMcl not initialized");
@@ -178,7 +179,7 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
         let len_bits = bv.len();
 
         // Convert to 0-based occurrence index
-        let mut occ = i - 1;
+        let occ = i - 1;
 
         let sb_idx = occ >> 12; // /4096
         let offset = occ & 0xFFF;
@@ -195,38 +196,30 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
                 } else {
                     // within a 64-group inside this 4096 block
                     let group = offset >> 6; // which 64-group within superblock
-                    let within = offset & 0x3F; // 1..63 occurrences after the sampled one
-
-                    // occurrences to find from the scan start:
-                    // SDSL does: i = i - sb*4096 - group*64; now i in 1..64
-                    let need = within as u32; // in 1..63 (since within!=0)
+                    let need = (offset & 0x3F) as u32; // 1..63 (since offset & 0x3F != 0)
 
                     let pos = self.superblock[sb_idx] + mini[group] as usize + 1;
 
-                    // Scan from pos for `need`-th occurrence
-                    let mut word_pos = pos >> 6;
+                    let word_pos = pos >> 6;
                     let word_off = (pos & 63) as u8;
 
                     let w0 = word_at(words, len_bits, word_pos);
-                    let mut args = P::args_in_first_word(w0, word_off);
+                    let args = P::args_in_first_word(w0, word_off);
                     if args >= need {
                         return (word_pos << 6) + (P::ith_arg_pos_in_first_word(w0, need, word_off) as usize);
                     }
 
+                    // Scan subsequent words via iterator (no per-element bounds checks).
                     let mut sum_args = args;
-                    word_pos += 1;
-
-                    loop {
-                        let w = word_at(words, len_bits, word_pos);
-                        args = P::args_in_word(w);
-                        if sum_args + args >= need {
-                            let kth = need - sum_args;
-                            return (word_pos << 6) + (P::ith_arg_pos_in_word(w, kth) as usize);
+                    let base = word_pos + 1;
+                    for (j, &w) in words[base..].iter().enumerate() {
+                        let a = P::args_in_word(w);
+                        if sum_args + a >= need {
+                            return ((base + j) << 6) + (P::ith_arg_pos_in_word(w, need - sum_args) as usize);
                         }
-                        sum_args += args;
-                        word_pos += 1;
-                        // (In valid usage, we must find it before running out.)
+                        sum_args += a;
                     }
+                    unreachable!()
                 }
             }
         }
