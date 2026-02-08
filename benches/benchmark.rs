@@ -17,7 +17,7 @@ fn main() {
 
     let bv = Arc::new(bv);
     benchmark_rank(bv.clone());
-    //benchmark_select(bv.clone());
+    benchmark_select(bv.clone());
 }
 
 fn benchmark_rank(bv: Arc<BitVec<u64, Lsb0>>) {
