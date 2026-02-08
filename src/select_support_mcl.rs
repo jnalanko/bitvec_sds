@@ -233,7 +233,7 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
     #[inline]
     pub unsafe fn select_unchecked(&self, i: usize) -> usize {
         unsafe {
-            let bv = self.bv.as_ref().unwrap_unchecked();
+            let bv = self.bv.as_ref().unwrap();
             let words = bv.as_raw_slice();
 
             let occ = i - 1;
