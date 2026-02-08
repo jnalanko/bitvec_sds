@@ -650,6 +650,39 @@ where
     pub fn value_range(&self) -> Range<usize> {
         self.lo as usize .. self.hi as usize
     }
+
+    /// Push all distinct values present in `data[l..r)` into `buf` (in sorted order).
+    pub fn range_distinct(&self, l: usize, r: usize, buf: &mut Vec<u32>) {
+        if l >= r || r > self.n {
+            return;
+        }
+        self.range_distinct_rec(0, l, r, buf);
+    }
+
+    fn range_distinct_rec(&self, node_idx: usize, l: usize, r: usize, buf: &mut Vec<u32>) {
+        if l >= r {
+            return;
+        }
+
+        let node = &self.nodes[node_idx];
+
+        if node.hi - node.lo == 1 {
+            buf.push(node.lo);
+            return;
+        }
+
+        let l1 = node.rank.rank1(l);
+        let r1 = node.rank.rank1(r);
+        let l0 = l - l1;
+        let r0 = r - r1;
+
+        if l0 < r0 {
+            self.range_distinct_rec(node.left as usize, l0, r0, buf);
+        }
+        if l1 < r1 {
+            self.range_distinct_rec(node.right as usize, l1, r1, buf);
+        }
+    }
 }
 
 /*
@@ -925,6 +958,46 @@ mod stress {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn stress_range_distinct() {
+        let mut rng = SplitMix64::new(0xCAFE_BABE_DEAD_BEEFu64);
+
+        let n: usize = 10_000;
+        let k: u32 = 256;
+
+        let a = gen_adversarial_array(&mut rng, n, k);
+
+        let wt = WaveletTree::new(
+            &a, 0, k,
+            RankSupportV::<Pat1>::new,
+            |bv| SelectBinarySearchOverRank {
+                rs: RankSupportV::<Pat1>::new(bv),
+            },
+        );
+
+        let queries = 20_000usize;
+        let mut buf = Vec::new();
+
+        for _ in 0..queries {
+            let l = rng.gen_range_usize(0, n);
+            let r = rng.gen_range_usize(l, n + 1);
+
+            buf.clear();
+            wt.range_distinct(l, r, &mut buf);
+
+            // Brute force: collect distinct values from a[l..r), sorted
+            let mut expected: Vec<u32> = a[l..r].iter().copied().collect();
+            expected.sort_unstable();
+            expected.dedup();
+
+            assert_eq!(
+                buf, expected,
+                "range_distinct mismatch: l={}, r={}, got={:?}, exp={:?}",
+                l, r, buf, expected,
+            );
         }
     }
 }
