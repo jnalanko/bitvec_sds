@@ -11,12 +11,13 @@ fn main() {
     let n = 8_000_000_000usize; // Is a multiple of 64
     let mut bv_data = Vec::<u64>::with_capacity(n/64);
     println!("Generating random bitvector of length {n}...");
-    for _ in bv_data.len() {
+    for _ in 0..n/64 {
         bv_data.push(rng.next_u64());
     }
 
     let bv = BitVec::<u64, Lsb0>::from_vec(bv_data);
     let bv = Arc::new(bv);
+    println!("{}", bv.len());
     benchmark_rank(bv.clone());
     benchmark_select(bv.clone());
 }
