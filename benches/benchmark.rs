@@ -52,6 +52,8 @@ fn benchmark_rank(bv: Arc<BitVec<u64, Lsb0>>) {
     let mut sum_of_answers = 0_usize;
     for &pos in &query_positions {
         sum_of_answers += rank_support.rank(pos);
+        //sum_of_answers += rank_support.rank_AI_optimized(pos);
+        //unsafe { sum_of_answers += rank_support.rank_unchecked(pos); }
     }
     println!("Sum of all rank answers: {}", sum_of_answers);
 

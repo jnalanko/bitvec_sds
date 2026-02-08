@@ -106,6 +106,31 @@ impl<T: RankTrait> RankSupportV<T> {
         ans as usize
     }
 
+    /// occurrences in prefix [0..idx)
+    pub unsafe fn rank_unchecked(&self, idx: usize) -> usize {
+        unsafe {
+            let bv = self.bv.as_ref().unwrap();
+            let words = bv.as_raw_slice();
+
+            let p = (idx >> 8) & !1; // (idx/512)*2
+            let super_abs = self.basic_block.get_unchecked(p);
+            let rel_pack = self.basic_block.get_unchecked(p + 1);
+
+            let b = ((idx & 0x1FF) >> 6) as u64; // 0..7
+            let rel = if b == 0 {
+                0
+            } else {
+                (rel_pack >> (63 - 9 * b)) & 0x1FF
+            };
+
+            let mut ans = super_abs + rel;
+            if (idx & 63) != 0 {
+                ans += T::word_rank(words, self.len_bits, idx) as u64;
+            }
+            ans as usize
+        }
+    }
+
     fn rebuild(&mut self) {
         let Some(bv) = &self.bv else {
             return;
