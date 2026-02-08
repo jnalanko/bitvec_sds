@@ -8,13 +8,14 @@ use simple_sds_sbwt::{ops::{Rank, Select}, serialize::Serialize};
 fn main() {
 
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(123);
-    let n = 8_000_000_000usize;
-    let mut bv: BitVec<u64, Lsb0> = BitVec::with_capacity(n);
+    let n = 8_000_000_000usize; // Is a multiple of 64
+    let mut bv_data = Vec::<u64>::with_capacity(n/64);
     println!("Generating random bitvector of length {n}...");
     for _ in 0..n {
-        bv.push(rng.next_u64() % 2 == 0);
+        bv_data.push(rng.next_u64());
     }
 
+    let bv = BitVec::<u64, Lsb0>::from_vec(bv_data);
     let bv = Arc::new(bv);
     benchmark_rank(bv.clone());
     benchmark_select(bv.clone());
