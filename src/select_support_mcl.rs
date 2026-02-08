@@ -103,7 +103,13 @@ impl<P: SelectTrait> Default for SelectSupportMcl<P> {
 impl<P: SelectTrait> SelectSupportMcl<P> {
     pub fn new(bv: Arc<BitVec<u64, Lsb0>>) -> Self {
         let mut s = Self::default();
-        s.set_vector(bv);
+        s.init_fast(bv);
+        s
+    }
+
+    fn new_slow(bv: Arc<BitVec<u64, Lsb0>>) -> Self {
+        let mut s = Self::default();
+        s.init_slow(bv);
         s
     }
 
@@ -155,7 +161,7 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
         }
     }
 
-    pub fn set_vector(&mut self, bv: Arc<BitVec<u64, Lsb0>>) {
+    pub fn init_slow(&mut self, bv: Arc<BitVec<u64, Lsb0>>) {
         self.bv = Some(bv);
         self.rebuild_slow();
     }
@@ -304,6 +310,171 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
         debug_assert_eq!(sb_cnt, self.superblock.len());
         debug_assert_eq!(sb_cnt, self.blocks.len());
     }
+
+    /// Port of SDSL `init_fast`. Builds the index using word-level sampling.
+    ///
+    /// Notes:
+    /// - This fast builder only makes sense for *single-bit* patterns (Sel1/Sel0 style),
+    ///   mirroring the C++ implementation which only uses init_fast when pat_len == 1.
+    /// - For other patterns, this falls back to `rebuild_slow()`.
+    pub fn init_fast(&mut self, bv: Arc<BitVec<u64, Lsb0>>) {
+        self.bv = Some(bv);
+        self.rebuild_fast();
+    }
+
+    fn rebuild_fast(&mut self) {
+        let Some(bv) = &self.bv else {
+            return;
+        };
+
+        // Reset
+        self.arg_cnt = 0;
+        self.superblock.clear();
+        self.blocks.clear();
+
+        let words = bv.as_raw_slice();
+        let len_bits = bv.len();
+        let cap_bits = words.len() * 64;
+
+        if cap_bits == 0 {
+            self.logn = 0;
+            self.logn2 = 0;
+            self.logn4 = 0;
+            return;
+        }
+
+        // Same as SDSL initData(): logn based on capacity
+        self.logn = hi(cap_bits as u64) + 1;
+        self.logn2 = self.logn * self.logn;
+        self.logn4 = self.logn2 * self.logn2;
+
+        // Count total occurrences
+        self.arg_cnt = P::arg_cnt(bv);
+        if self.arg_cnt == 0 {
+            return;
+        }
+
+        const SUPER: usize = 64 * 64; // 4096 occurrences per superblock
+
+        let sb_est = (self.arg_cnt + SUPER - 1) / SUPER;
+        self.superblock.reserve(sb_est);
+        self.blocks.reserve(sb_est);
+
+        // Stores positions of every 64th occurrence inside the current 4096-occurrence block:
+        // indices 0,64,128,...,4032 are written (64 entries).
+        let mut arg_position = vec![0usize; SUPER];
+
+        let mut cnt_old: usize = 0;
+        let mut cnt_new: usize = 0;
+
+        // last_k64 is the *index slot* in arg_position we’re going to fill next (+1, in C++ style)
+        let mut last_k64: usize = 1;
+        // last_k64_sum is the *global occurrence rank* we’re waiting for next (1, 65, 129, ...)
+        let mut last_k64_sum: usize = 1;
+
+        let mut sb_cnt: usize = 0;
+
+        for widx in 0..words.len() {
+            let bit_base = widx * 64;
+            let w = word_at(words, len_bits, widx);
+
+            cnt_new += P::args_in_word(w) as usize;
+            // word_at() zeros unused bits in the last word; for Sel0 this
+            // causes (!w).count_ones() to overcount.  Cap to the true total.
+            cnt_new = cnt_new.min(self.arg_cnt);
+
+            while cnt_new >= last_k64_sum {
+                // We just reached global occurrence `last_k64_sum`.
+                let k_in_word = (last_k64_sum - cnt_old) as u32; // 1-based within this word
+                let bit_off = P::ith_arg_pos_in_word(w, k_in_word) as usize;
+
+                arg_position[last_k64 - 1] = bit_base + bit_off;
+
+                last_k64 += 64;
+                last_k64_sum += 64;
+
+                // Once we've collected the 64 samples for a full 4096-occurrence block,
+                // last_k64 becomes 4097 (SUPER+1) and we flush that block.
+                if last_k64 == SUPER + 1 {
+                    // Actual number of occurrences in this superblock (last one may be partial).
+                    let sb_occ = SUPER.min(self.arg_cnt - sb_cnt * SUPER);
+
+                    let first = arg_position[0];
+                    self.superblock.push(first);
+
+                    // Determine the true position of the last occurrence by scanning
+                    // forward from the 4033rd (arg_position[4032]).
+                    let mut pos_last = arg_position[SUPER - 64]; // position of 4033rd
+                    let mut remaining = sb_occ - (SUPER - 64 + 1); // sb_occ - 4033
+
+                    let mut bit_i = pos_last + 1;
+                    while bit_i < len_bits && remaining > 0 {
+                        if P::found_arg(bit_i, bv) {
+                            pos_last = bit_i;
+                            remaining -= 1;
+                        }
+                        bit_i += 1;
+                    }
+                    debug_assert!(
+                        remaining == 0,
+                        "init_fast: ran out of bits while completing a block"
+                    );
+
+                    let diff = pos_last - first;
+
+                    if (diff as u32) > self.logn4 {
+                        // Long block: store exact positions for all occurrences.
+                        let mut long = Vec::with_capacity(sb_occ);
+                        let mut p = first;
+                        while p <= pos_last && long.len() < sb_occ {
+                            if P::found_arg(p, bv) {
+                                long.push(p);
+                            }
+                            p += 1;
+                        }
+                        debug_assert_eq!(long.len(), sb_occ);
+                        self.blocks.push(Block::Long(long));
+                    } else {
+                        // Mini block: store relative position of every 64th occurrence.
+                        let mut mini = [0u32; 64];
+                        for j in (0..sb_occ).step_by(64) {
+                            mini[j / 64] = (arg_position[j] - first) as u32;
+                        }
+                        self.blocks.push(Block::Mini { mini, cnt: sb_occ });
+                    }
+
+                    sb_cnt += 1;
+
+                    // Start collecting samples for the next superblock
+                    last_k64 = 1;
+                }
+            }
+
+            cnt_old = cnt_new;
+        }
+
+        // Handle last partial block (SDSL stores it as a long block).
+        if sb_cnt < sb_est && last_k64 > 1 {
+            let first = arg_position[0];
+            self.superblock.push(first);
+
+            let rem = self.arg_cnt - sb_cnt * SUPER;
+            let mut long = Vec::with_capacity(rem);
+            for bit_i in first..len_bits {
+                if P::found_arg(bit_i, bv) {
+                    long.push(bit_i);
+                }
+            }
+            debug_assert_eq!(long.len(), rem);
+            self.blocks.push(Block::Long(long));
+            sb_cnt += 1;
+        }
+
+        debug_assert_eq!(sb_cnt, sb_est);
+        debug_assert_eq!(self.superblock.len(), self.blocks.len());
+        debug_assert_eq!(self.blocks.len(), sb_est);
+    }
+
 }
 
 // ============================
@@ -373,7 +544,7 @@ impl<P: SelectTrait + Default> SelectSupport for SelectSupportMclAdapter<P> {
     }
 
     fn set_vector(&mut self, bv: Arc<BitVec<u64, Lsb0>>) {
-        self.inner.set_vector(bv);
+        self.inner.init_fast(bv);
     }
 
     fn select1(&self, k: usize) -> usize {
@@ -577,7 +748,7 @@ mod select_mcl_stress_tests {
             for &k in &ks_ones {
                 let got = sel1.select(k);
                 let exp = ones_pos[k - 1];
-                eprintln!("{} {}", exp, got);
+                //eprintln!("{} {}", exp, got);
                 assert_eq!(
                     got, exp,
                     "case {case}: Sel1 select mismatch at k={k} (ones={ones})"
