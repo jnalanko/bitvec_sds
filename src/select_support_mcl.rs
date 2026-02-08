@@ -675,14 +675,14 @@ mod select_mcl_stress_tests {
 
     #[test]
     fn select_support_mcl_stress_long_runs_100k_x10_fast_reference() {
-        const CASES: usize = 10;
-        const LEN: usize = 100_000;
+        const CASES: usize = 64;
 
         let mut rng = XorShift64::new(0xC0FFEE_1234_5678);
 
         for case in 0..CASES {
-            let bv = build_runs_bv(LEN, &mut rng);
-            assert_eq!(bv.len(), LEN);
+            let len = 100_1000 + case % 64; // Make sure to hit word-boundary issues
+            let bv = build_runs_bv(len, &mut rng);
+            assert_eq!(bv.len(), len);
 
             // Precompute exact answers in O(n)
             let (ones_pos, zeros_pos) = precompute_select_tables(&bv);
