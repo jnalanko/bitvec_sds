@@ -140,8 +140,8 @@ struct Node<R, S> {
     bits: Arc<BitVec<u64, Lsb0>>,
     rank: R,
     sel: S,
-    left: Option<usize>,
-    right: Option<usize>,
+    left: u32,
+    right: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -150,8 +150,8 @@ struct NodeBuilder {
     hi: u32, // exclusive
     mid: u32,
     bits: BitVec<u64, Lsb0>,
-    left: Option<usize>,
-    right: Option<usize>,
+    left: u32,
+    right: u32,
 }
 
 fn build_template(nodes: &mut Vec<NodeBuilder>, lo: u32, hi: u32) -> usize {
@@ -163,15 +163,15 @@ fn build_template(nodes: &mut Vec<NodeBuilder>, lo: u32, hi: u32) -> usize {
         hi,
         mid,
         bits: BitVec::new(),
-        left: None,
-        right: None,
+        left: u32::MAX,
+        right: u32::MAX,
     });
 
     if hi - lo > 1 {
         let left = build_template(nodes, lo, mid);
         let right = build_template(nodes, mid, hi);
-        nodes[idx].left = Some(left);
-        nodes[idx].right = Some(right);
+        nodes[idx].left = left as u32;
+        nodes[idx].right = right as u32;
     }
     idx
 }
@@ -230,9 +230,9 @@ where
                 }
                 counts[node_idx] += 1;
                 node_idx = if v >= node.mid {
-                    node.right.expect("internal node must have right child")
+                    node.right as usize
                 } else {
-                    node.left.expect("internal node must have left child")
+                    node.left as usize
                 };
             }
         }
@@ -264,9 +264,9 @@ where
                 builders[node_idx].bits.push(go_right);
 
                 node_idx = if go_right {
-                    right_i.expect("internal node must have right child")
+                    right_i as usize
                 } else {
-                    left_i.expect("internal node must have left child")
+                    left_i as usize
                 };
             }
         }
@@ -286,6 +286,7 @@ where
                 sel,
                 left: b.left,
                 right: b.right,
+
             });
         }
 
@@ -304,14 +305,8 @@ where
             bincode::serialize_into(&mut writer, &(*node.bits)).unwrap();
             node.rank.serialize(&mut writer);
             node.sel.serialize(&mut writer);
-            match node.left {
-                Some(idx) => bincode::serialize_into(&mut writer, &idx).unwrap(),
-                None => bincode::serialize_into(&mut writer, &u64::MAX).unwrap(),
-            }
-            match node.right {
-                Some(idx) => bincode::serialize_into(&mut writer, &idx).unwrap(),
-                None => bincode::serialize_into(&mut writer, &u64::MAX).unwrap(),
-            }
+            bincode::serialize_into(&mut writer, &(node.left as u64)).unwrap();
+            bincode::serialize_into(&mut writer, &(node.right as u64)).unwrap();
 
         }
     }
@@ -332,19 +327,11 @@ where
             let rank = R::load(&mut reader, bits.clone());
             let sel = S::load(&mut reader, bits.clone());
 
-            let left_idx: u64 = bincode::deserialize_from(&mut reader).unwrap();
-            let left = if left_idx == u64::MAX {
-                None
-            } else {
-                Some(left_idx as usize)
-            };
+            let left_raw: u64 = bincode::deserialize_from(&mut reader).unwrap();
+            let left = if left_raw == u64::MAX { u32::MAX } else { left_raw as u32 };
 
-            let right_idx: u64 = bincode::deserialize_from(&mut reader).unwrap();
-            let right = if right_idx == u64::MAX {
-                None
-            } else {
-                Some(right_idx as usize)
-            };
+            let right_raw: u64 = bincode::deserialize_from(&mut reader).unwrap();
+            let right = if right_raw == u64::MAX { u32::MAX } else { right_raw as u32 };
 
             nodes.push(Node {
                 lo,
@@ -416,8 +403,8 @@ where
             return Some(l);
         }
 
-        let left_idx = node.left.expect("internal node must have left");
-        let right_idx = node.right.expect("internal node must have right");
+        let left_idx = node.left as usize;
+        let right_idx = node.right as usize;
 
         //let l0 = node.rank.rank0(l);
         //let r0 = node.rank.rank0(r);
@@ -468,8 +455,8 @@ where
                 return Some(r - 1);
             }
 
-            let left_idx = node.left.expect("internal node must have left");
-            let right_idx = node.right.expect("internal node must have right");
+            let left_idx = node.left as usize;
+            let right_idx = node.right as usize;
 
             let l1 = node.rank.rank1(l);
             let r1 = node.rank.rank1(r);
@@ -502,8 +489,8 @@ where
             return l;
         }
 
-        let left_idx = node.left.expect("internal node must have left");
-        let right_idx = node.right.expect("internal node must have right");
+        let left_idx = node.left as usize;
+        let right_idx = node.right as usize;
 
         let l0 = node.rank.rank0(l);
         let r0 = node.rank.rank0(r);
@@ -530,8 +517,8 @@ where
             return r - 1;
         }
 
-        let left_idx = node.left.expect("internal node must have left");
-        let right_idx = node.right.expect("internal node must have right");
+        let left_idx = node.left as usize;
+        let right_idx = node.right as usize;
 
         let l1 = node.rank.rank1(l);
         let r1 = node.rank.rank1(r);
@@ -566,18 +553,14 @@ where
                 return node.lo;
             }
 
-            // Decide direction by the bit at this node position.
-            // bit = 0 => left, bit = 1 => right
-            let bit = node.bits.get(pos).unwrap();
-
-            if *bit {
-                // Go right: map position to child coordinate via rank1
-                pos = node.rank.rank1(pos);
-                node_idx = node.right.expect("internal node must have right");
+            // Compute rank1 once; derive rank0 = pos - r1
+            let r1 = node.rank.rank1(pos);
+            if *node.bits.get(pos).unwrap() {
+                pos = r1;
+                node_idx = node.right as usize;
             } else {
-                // Go left: map position to child coordinate via rank0
-                pos = node.rank.rank0(pos);
-                node_idx = node.left.expect("internal node must have left");
+                pos = pos - r1;
+                node_idx = node.left as usize;
             }
         }
     }
@@ -599,20 +582,20 @@ where
                 return Some(node.lo);
             }
 
-            // Map [lcur, rcur) to children coordinates
-            let l0 = node.rank.rank0(lcur);
-            let r0 = node.rank.rank0(rcur);
+            // Compute rank1 once per endpoint; derive rank0
+            let l1 = node.rank.rank1(lcur);
+            let r1 = node.rank.rank1(rcur);
+            let l0 = lcur - l1;
+            let r0 = rcur - r1;
 
             if l0 < r0 {
                 // There is at least one element on the left => min must be in left
-                node_idx = node.left.expect("internal node must have left");
+                node_idx = node.left as usize;
                 lcur = l0;
                 rcur = r0;
             } else {
                 // Left is empty in this range => go right
-                let l1 = node.rank.rank1(lcur);
-                let r1 = node.rank.rank1(rcur);
-                node_idx = node.right.expect("internal node must have right");
+                node_idx = node.right as usize;
                 lcur = l1;
                 rcur = r1;
             }
@@ -644,11 +627,11 @@ where
             if x < node.mid {
                 // Go left, count zeros
                 pref = node.rank.rank0(pref);
-                node_idx = node.left.expect("internal node must have left");
+                node_idx = node.left as usize;
             } else {
                 // Go right, count ones
                 pref = node.rank.rank1(pref);
-                node_idx = node.right.expect("internal node must have right");
+                node_idx = node.right as usize;
             }
 
             if pref == 0 {
