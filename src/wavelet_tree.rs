@@ -651,6 +651,81 @@ where
         self.lo as usize .. self.hi as usize
     }
 
+    /// Return the two smallest distinct values in `data[l..r)` in O(log k).
+    pub fn range_bottom2(&self, l: usize, r: usize) -> (Option<u32>, Option<u32>) {
+        if l >= r || r > self.n {
+            return (None, None);
+        }
+        self.range_bottom2_rec(0, l, r)
+    }
+
+    fn range_bottom2_rec(
+        &self,
+        node_idx: usize,
+        l: usize,
+        r: usize,
+    ) -> (Option<u32>, Option<u32>) {
+        if l >= r {
+            return (None, None);
+        }
+
+        let node = &self.nodes[node_idx];
+
+        if node.hi - node.lo == 1 {
+            return (Some(node.lo), None);
+        }
+
+        let l1 = node.rank.rank1(l);
+        let r1 = node.rank.rank1(r);
+        let l0 = l - l1;
+        let r0 = r - r1;
+
+        let left_non_empty = l0 < r0;
+        let right_non_empty = l1 < r1;
+
+        match (left_non_empty, right_non_empty) {
+            (true, true) => {
+                let (a, b) = self.range_bottom2_rec(node.left as usize, l0, r0);
+                if b.is_some() {
+                    (a, b)
+                } else {
+                    // Left had only 1 distinct value; second smallest is the right minimum.
+                    let right_min = self.range_min_from(node.right as usize, l1, r1);
+                    (a, right_min)
+                }
+            }
+            (true, false) => self.range_bottom2_rec(node.left as usize, l0, r0),
+            (false, true) => self.range_bottom2_rec(node.right as usize, l1, r1),
+            (false, false) => (None, None),
+        }
+    }
+
+    /// Minimum value in a subtree rooted at `node_idx` restricted to positions `[l, r)`.
+    fn range_min_from(&self, mut node_idx: usize, mut l: usize, mut r: usize) -> Option<u32> {
+        if l >= r {
+            return None;
+        }
+        loop {
+            let node = &self.nodes[node_idx];
+            if node.hi - node.lo == 1 {
+                return Some(node.lo);
+            }
+            let l1 = node.rank.rank1(l);
+            let r1 = node.rank.rank1(r);
+            let l0 = l - l1;
+            let r0 = r - r1;
+            if l0 < r0 {
+                node_idx = node.left as usize;
+                l = l0;
+                r = r0;
+            } else {
+                node_idx = node.right as usize;
+                l = l1;
+                r = r1;
+            }
+        }
+    }
+
     /// Push all distinct values present in `data[l..r)` into `buf` (in sorted order).
     pub fn range_distinct(&self, l: usize, r: usize, buf: &mut Vec<u32>) {
         if l >= r || r > self.n {
@@ -997,6 +1072,47 @@ mod stress {
                 buf, expected,
                 "range_distinct mismatch: l={}, r={}, got={:?}, exp={:?}",
                 l, r, buf, expected,
+            );
+        }
+    }
+
+    #[test]
+    fn stress_range_bottom2() {
+        let mut rng = SplitMix64::new(0x1234_5678_9ABC_DEF0u64);
+
+        let n: usize = 10_000;
+        let k: u32 = 256;
+
+        let a = gen_adversarial_array(&mut rng, n, k);
+
+        let wt = WaveletTree::new(
+            &a, 0, k,
+            RankSupportV::<Pat1>::new,
+            |bv| SelectBinarySearchOverRank {
+                rs: RankSupportV::<Pat1>::new(bv),
+            },
+        );
+
+        let queries = 20_000usize;
+
+        for _ in 0..queries {
+            let l = rng.gen_range_usize(0, n);
+            let r = rng.gen_range_usize(l, n + 1);
+
+            let (got0, got1) = wt.range_bottom2(l, r);
+
+            // Brute force: sorted distinct values
+            let mut vals: Vec<u32> = a[l..r].iter().copied().collect();
+            vals.sort_unstable();
+            vals.dedup();
+
+            let exp0 = vals.first().copied();
+            let exp1 = if vals.len() > 1 { Some(vals[1]) } else { None };
+
+            assert_eq!(
+                (got0, got1), (exp0, exp1),
+                "range_bottom2 mismatch: l={}, r={}, got=({:?},{:?}), exp=({:?},{:?})",
+                l, r, got0, got1, exp0, exp1,
             );
         }
     }
