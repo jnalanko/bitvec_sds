@@ -410,23 +410,27 @@ where
             // Right-child values are all >= mid > x, so only recurse left.
             self.next_in_value_prefix_range(node.left as usize, l0, r0, x)
                 .and_then(|p| node.sel.select0(p + 1))
-        } else {
-            // x >= mid: every left-child value is < mid <= x, so the earliest
-            // 0-bit in [l,r) is a candidate with no recursion needed.
-            let cand_left = if l0 < r0 {
-                node.sel.select0(l0 + 1) // first 0-bit in [l, r)
-            } else {
-                None
-            };
-            let cand_right = self
-                .next_in_value_prefix_range(node.right as usize, l1, r1, x)
-                .and_then(|p| node.sel.select1(p + 1));
-
-            match (cand_left, cand_right) {
-                (Some(a), Some(b)) => Some(a.min(b)),
-                (Some(a), None) => Some(a),
-                (None, b) => b,
+        } else if l0 < r0 {
+            // x >= mid: every left-child value is < mid <= x.
+            // The first 0-bit in [l,r) is a candidate with no recursion.
+            let cl = node.sel.select0(l0 + 1).unwrap();
+            if cl == l {
+                return Some(cl); // earliest possible position, can't be beaten
             }
+            // Positions [l, cl) are all 1-bits → right child [l1, l1+cl-l).
+            // Any right-child hit maps to a position < cl, so it always wins.
+            let narrow_r1 = l1 + cl - l;
+            match self
+                .next_in_value_prefix_range(node.right as usize, l1, narrow_r1, x)
+                .and_then(|p| node.sel.select1(p + 1))
+            {
+                Some(cr) => Some(cr),
+                None => Some(cl),
+            }
+        } else {
+            // No zeros in [l, r), all elements go right.
+            self.next_in_value_prefix_range(node.right as usize, l1, r1, x)
+                .and_then(|p| node.sel.select1(p + 1))
         }
     }
 
@@ -463,23 +467,27 @@ where
             // Right-child values are all >= mid > x, so only recurse left.
             self.prev_in_value_prefix_range(node.left as usize, l0, r0, x)
                 .and_then(|p| node.sel.select0(p + 1))
-        } else {
-            // x >= mid: every left-child value is < mid <= x, so the latest
-            // 0-bit in [l,r) is a candidate with no recursion needed.
-            let cand_left = if l0 < r0 {
-                node.sel.select0(r0) // last 0-bit in [l, r)
-            } else {
-                None
-            };
-            let cand_right = self
-                .prev_in_value_prefix_range(node.right as usize, l1, r1, x)
-                .and_then(|p| node.sel.select1(p + 1));
-
-            match (cand_left, cand_right) {
-                (Some(a), Some(b)) => Some(a.max(b)),
-                (Some(a), None) => Some(a),
-                (None, b) => b,
+        } else if l0 < r0 {
+            // x >= mid: every left-child value is < mid <= x.
+            // The last 0-bit in [l,r) is a candidate with no recursion.
+            let cl = node.sel.select0(r0).unwrap();
+            if cl == r - 1 {
+                return Some(cl); // latest possible position, can't be beaten
             }
+            // Positions (cl, r) are all 1-bits → right child [cl+1-r0, r1).
+            // Any right-child hit maps to a position > cl, so it always wins.
+            let narrow_l1 = cl + 1 - r0;
+            match self
+                .prev_in_value_prefix_range(node.right as usize, narrow_l1, r1, x)
+                .and_then(|p| node.sel.select1(p + 1))
+            {
+                Some(cr) => Some(cr),
+                None => Some(cl),
+            }
+        } else {
+            // No zeros in [l, r), all elements go right.
+            self.prev_in_value_prefix_range(node.right as usize, l1, r1, x)
+                .and_then(|p| node.sel.select1(p + 1))
         }
     }
 
