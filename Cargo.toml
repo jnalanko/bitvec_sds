@@ -18,3 +18,8 @@ simple-sds-sbwt = "0.3.2"
 [[bench]]
 name = "benchmark"
 harness = false # means: no nightly #[bench], just a normal main function
+
+[target.x86_64-unknown-linux-gnu]
+# Linker options to make flamegraph profiling work
+linker = "/usr/bin/clang"
+rustflags = ["-Clink-arg=-fuse-ld=lld", "-Clink-arg=-Wl,--no-rosegment"]
