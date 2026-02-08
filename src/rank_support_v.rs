@@ -88,7 +88,7 @@ impl<T: RankTrait> RankSupportV<T> {
         let bv = self.bv.as_ref().expect("RankSupportV not initialized");
         let words = bv.as_raw_slice();
 
-        let p = ((idx >> 8) & !1) as usize; // (idx/512)*2
+        let p = (idx >> 8) & !1; // (idx/512)*2
         let super_abs = self.basic_block[p];
         let rel_pack = self.basic_block[p + 1];
 
@@ -96,7 +96,7 @@ impl<T: RankTrait> RankSupportV<T> {
         let rel = if b == 0 {
             0
         } else {
-            ((rel_pack >> (63 - 9 * b)) & 0x1FF) as u64
+            (rel_pack >> (63 - 9 * b)) & 0x1FF
         };
 
         let mut ans = super_abs + rel;
