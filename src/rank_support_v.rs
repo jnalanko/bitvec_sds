@@ -1,7 +1,5 @@
 use bitvec::prelude::*;
 use std::{marker::PhantomData, sync::Arc};
-use serde::{Serialize, Deserialize};
-
 use crate::{traits::{Pat1, RankSupport, RankTrait}, util::word_at};
 
 /// Port of `sdsl::rank_support_v`:

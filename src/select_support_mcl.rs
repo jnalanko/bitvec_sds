@@ -107,12 +107,6 @@ impl<P: SelectTrait> SelectSupportMcl<P> {
         s
     }
 
-    fn new_slow(bv: Arc<BitVec<u64, Lsb0>>) -> Self {
-        let mut s = Self::default();
-        s.init_slow(bv);
-        s
-    }
-
     pub fn serialize(&self, mut writer: &mut impl std::io::Write) {
         bincode::serialize_into(&mut writer, &self.arg_cnt).unwrap();
         bincode::serialize_into(&mut writer, &self.logn).unwrap();
@@ -576,8 +570,6 @@ fn word_at(words: &[u64], len_bits: usize, widx: usize) -> u64 {
 //       fn set_vector(&mut self, bv: Arc<BitVec<u64, Lsb0>>);
 //       fn select1(&self, k: usize) -> usize;
 //   }
-
-use bitvec::prelude::*;
 
 use crate::traits::{Sel1, SelectSupport, SelectTrait};
 

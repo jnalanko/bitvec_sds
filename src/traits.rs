@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use bitvec::prelude::*;
 
-use crate::util::{lo_unset, low_mask, map01, map10, select_in_word, word_at};
+use crate::util::{low_mask, select_in_word, word_at};
 
 pub trait RankTrait: Clone + Default {
     fn init_carry() -> u64;

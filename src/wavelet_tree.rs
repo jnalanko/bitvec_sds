@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bitvec::prelude::*;
 use crate::traits::*;
 use crate::rank_support_v::RankSupportV;
-use crate::select_support_mcl::{self, SelectSupportMcl};
+use crate::select_support_mcl::SelectSupportMcl;
 
 /// Rank support: # of 1-bits in B[0..idx)
 pub trait RankSupport {
@@ -488,64 +488,6 @@ where
             // No zeros in [l, r), all elements go right.
             self.prev_in_value_prefix_range(node.right as usize, l1, r1, x)
                 .and_then(|p| node.sel.select1(p + 1))
-        }
-    }
-
-    /// Return the first position in [l, r) within this node (mapped to this node's coords).
-    /// O(log k) via select mapping down/up.
-    fn first_in_interval(&self, node_idx: usize, l: usize, r: usize) -> usize {
-        let node = &self.nodes[node_idx];
-        if node.hi - node.lo == 1 {
-            return l;
-        }
-
-        let left_idx = node.left as usize;
-        let right_idx = node.right as usize;
-
-        let l0 = node.rank.rank0(l);
-        let r0 = node.rank.rank0(r);
-        if l0 < r0 {
-            let p_child = self.first_in_interval(left_idx, l0, r0);
-            node.sel
-                .select0(p_child + 1)
-                .expect("select0 must exist for valid child position")
-        } else {
-            let l1 = l - l0; // rank1
-            let r1 = r - r0; // rank1
-            // Since [l,r) non-empty and left empty, right must be non-empty.
-            let p_child = self.first_in_interval(right_idx, l1, r1);
-            node.sel
-                .select1(p_child + 1)
-                .expect("select1 must exist for valid child position")
-        }
-    }
-
-    /// Return the last position in [l, r) within this node (mapped to this node's coords).
-    fn last_in_interval(&self, node_idx: usize, l: usize, r: usize) -> usize {
-        let node = &self.nodes[node_idx];
-        if node.hi - node.lo == 1 {
-            return r - 1;
-        }
-
-        let left_idx = node.left as usize;
-        let right_idx = node.right as usize;
-
-        let l1 = node.rank.rank1(l);
-        let r1 = node.rank.rank1(r);
-        if l1 < r1 {
-            let p_child = self.last_in_interval(right_idx, l1, r1);
-            node.sel
-                .select1(p_child + 1)
-                .expect("select1 must exist for valid child position")
-        } else {
-            let l0 = l - l1; // rank0
-            let r0 = r - r1; // rank0
-            //let l0 = node.rank.rank0(l);
-            //let r0 = node.rank.rank0(r);
-            let p_child = self.last_in_interval(left_idx, l0, r0);
-            node.sel
-                .select0(p_child + 1)
-                .expect("select0 must exist for valid child position")
         }
     }
 
