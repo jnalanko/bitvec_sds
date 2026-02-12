@@ -5,16 +5,18 @@ use crate::traits::{IntArray, RandomAccessU64};
 /// A compact array storing fixed-width integers in a bitvector.
 /// Each element uses `bits_per_element` bits.
 pub struct PackedArray {
-    data: BitVec<usize, Lsb0>,
+    data: BitVec<u64, Lsb0>,
     len: usize,
     bits_per_element: usize,
 }
 
 impl PackedArray {
-    fn new(bits_per_element: usize) -> Self {
+    fn new(bits_per_element: usize, capacity: usize) -> Self {
         assert!(bits_per_element > 0 && bits_per_element <= 64);
+        let mut data = BitVec::<u64, Lsb0>::new();
+        data.reserve(capacity * bits_per_element);
         Self {
-            data: BitVec::new(),
+            data,
             len: 0,
             bits_per_element,
         }
@@ -27,12 +29,13 @@ impl PackedArray {
             max_val = max_val.max(values.get(i));
         }
         let bits_per_element = bits_for_max(max_val);
-        let mut data = BitVec::with_capacity(len * bits_per_element);
+        let total_bits = len * bits_per_element;
+        let mut data = bitvec![u64, Lsb0; 0; total_bits];
         for i in 0..len {
             let v = values.get(i);
-            for b in 0..bits_per_element {
-                data.push((v >> b) & 1 != 0);
-            }
+            let start = i * bits_per_element;
+            data[start..start + bits_per_element]
+                .copy_from_bitslice(&v.view_bits::<Lsb0>()[..bits_per_element]);
         }
         Self {
             data,
@@ -49,11 +52,8 @@ impl PackedArray {
         debug_assert!(index < self.len);
         let start = index * self.bits_per_element;
         let mut val: u64 = 0;
-        for b in 0..self.bits_per_element {
-            if self.data[start + b] {
-                val |= 1u64 << b;
-            }
-        }
+        val.view_bits_mut::<Lsb0>()[..self.bits_per_element]
+            .copy_from_bitslice(&self.data[start..start + self.bits_per_element]);
         val
     }
 
@@ -63,9 +63,10 @@ impl PackedArray {
             "value {value} does not fit in {} bits",
             self.bits_per_element
         );
-        for b in 0..self.bits_per_element {
-            self.data.push((value >> b) & 1 != 0);
-        }
+        let start = self.data.len();
+        self.data.resize(start + self.bits_per_element, false);
+        self.data[start..start + self.bits_per_element]
+            .copy_from_bitslice(&value.view_bits::<Lsb0>()[..self.bits_per_element]);
         self.len += 1;
     }
 }
@@ -86,7 +87,7 @@ impl IntArray for PackedArray {
 
     fn with_init_value(value: usize, len: usize) -> Self {
         let bits_per_element = bits_for_max(value as u64);
-        let mut pa = PackedArray::new(bits_per_element);
+        let mut pa = PackedArray::new(bits_per_element, len);
         for _ in 0..len {
             pa.push(value as u64);
         }
@@ -105,9 +106,8 @@ impl IntArray for PackedArray {
             self.bits_per_element
         );
         let start = index * self.bits_per_element;
-        for b in 0..self.bits_per_element {
-            self.data.set(start + b, (value >> b) & 1 != 0);
-        }
+        self.data[start..start + self.bits_per_element]
+            .copy_from_bitslice(&value.view_bits::<Lsb0>()[..self.bits_per_element]);
     }
 
     fn len(&self) -> usize {
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn packed_array_push() {
-        let mut pa = PackedArray::new(8);
+        let mut pa = PackedArray::new(8, 256);
         for v in 0..=255u64 {
             pa.push(v);
         }

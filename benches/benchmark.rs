@@ -2,7 +2,7 @@ use std::{io::{Cursor, Read}, sync::Arc};
 use bitvec::prelude::*;
 use rand_xoshiro::{Xoshiro256PlusPlus, rand_core::{RngCore, SeedableRng}};
 
-use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, Sel1}};
+use bitvec_sds::{rank_support_v::RankSupportV, traits::{IntArray, Pat1, Sel1}};
 use bitvec_sds::rmq_tree::{RmqTree, PackedArray};
 use simple_sds_sbwt::{ops::{Rank, Select}, serialize::Serialize};
 
@@ -169,13 +169,13 @@ fn benchmark_rmq_tree() {
 
     println!("Building RmqTree<Vec<u8>>...");
     let start = std::time::Instant::now();
-    let tree_vec: RmqTree<Vec<u8>> = RmqTree::new(values.as_slice(), 4);
+    let tree_vec: RmqTree<Vec<u8>> = RmqTree::new(values.clone(), 4);
     let elapsed = start.elapsed();
     println!("Build time (Vec<u8>): {:.2} s", elapsed.as_secs_f64());
 
     println!("Building RmqTree<PackedArray>...");
     let start = std::time::Instant::now();
-    let tree_packed: RmqTree<PackedArray> = RmqTree::new(&values.as_slice(), 4);
+    let tree_packed: RmqTree<PackedArray> = RmqTree::new(PackedArray::with_values(values.as_slice()), 4);
     let elapsed = start.elapsed();
     println!("Build time (PackedArray): {:.2} s", elapsed.as_secs_f64());
 
