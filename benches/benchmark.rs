@@ -160,6 +160,7 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
 fn benchmark_rmq_tree() {
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
     let n = 1_000_000_000usize;
+    let b = 8;
 
     println!("Generating {n} random u8 values...");
     let mut values: Vec<u8> = Vec::with_capacity(n);
@@ -169,13 +170,13 @@ fn benchmark_rmq_tree() {
 
     println!("Building RmqTree<Vec<u8>>...");
     let start = std::time::Instant::now();
-    let tree_vec: RmqTree<Vec<u8>> = RmqTree::new(values.clone(), 4);
+    let tree_vec: RmqTree<Vec<u8>> = RmqTree::new(values.clone(), b);
     let elapsed = start.elapsed();
     println!("Build time (Vec<u8>): {:.2} s", elapsed.as_secs_f64());
 
     println!("Building RmqTree<PackedArray>...");
     let start = std::time::Instant::now();
-    let tree_packed: RmqTree<PackedArray> = RmqTree::new(PackedArray::with_values(values.as_slice()), 4);
+    let tree_packed: RmqTree<PackedArray> = RmqTree::new(PackedArray::with_values(values.as_slice()), b);
     let elapsed = start.elapsed();
     println!("Build time (PackedArray): {:.2} s", elapsed.as_secs_f64());
 
