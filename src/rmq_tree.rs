@@ -20,16 +20,16 @@ impl PackedArray {
         }
     }
 
-    fn with_values(values: &impl RandomAccessU64, bits_per_element: usize) -> Self {
-        assert!(bits_per_element > 0 && bits_per_element <= 64);
+    fn with_values(values: &impl RandomAccessU64) -> Self {
         let len = values.len();
+        let mut max_val: u64 = 0;
+        for i in 0..len {
+            max_val = max_val.max(values.get(i));
+        }
+        let bits_per_element = bits_for_max(max_val);
         let mut data = BitVec::with_capacity(len * bits_per_element);
         for i in 0..len {
             let v = values.get(i);
-            debug_assert!(
-                bits_per_element == 64 || v < (1u64 << bits_per_element),
-                "value {v} does not fit in {bits_per_element} bits"
-            );
             for b in 0..bits_per_element {
                 data.push((v >> b) & 1 != 0);
             }
@@ -80,8 +80,8 @@ fn bits_for_max(max_val: u64) -> usize {
 }
 
 impl IntArray for PackedArray {
-    fn with_values(values: &impl RandomAccessU64, bits_per_element: usize) -> Self {
-        PackedArray::with_values(values, bits_per_element)
+    fn with_values(values: &impl RandomAccessU64) -> Self {
+        PackedArray::with_values(values)
     }
 
     fn get(&self, index: usize) -> u64 {
@@ -123,14 +123,7 @@ impl<A: IntArray> RmqTree<A> {
         let block_len: usize = 1 << block_bits;
         let block_mask: usize = block_len - 1;
 
-        // Determine bits per element from the maximum value (and the sentinel `n`).
-        let mut max_val = n as u64;
-        for i in 0..n {
-            max_val = max_val.max(values.get(i));
-        }
-        let bpe = bits_for_max(max_val);
-
-        let x = A::with_values(values, bpe);
+        let x = A::with_values(values);
 
         // Compute tree_size: smallest power of two such that tree_size * block_len >= n.
         let mut tree_size: usize = 1;
@@ -163,7 +156,7 @@ impl<A: IntArray> RmqTree<A> {
             tree_vals[i] = tree_vals[2 * i].min(tree_vals[2 * i + 1]);
         }
 
-        let tree = A::with_values(&tree_vals.as_slice(), bpe);
+        let tree = A::with_values(&tree_vals.as_slice());
 
         Self {
             x,
@@ -375,7 +368,7 @@ mod tests {
     #[test]
     fn packed_array_roundtrip() {
         let vals: Vec<u64> = vec![0, 1, 2, 3, 15, 7, 8, 14];
-        let pa = PackedArray::with_values(&vals.as_slice(), 4);
+        let pa = PackedArray::with_values(&vals.as_slice());
         assert_eq!(pa.len(), vals.len());
         for (i, &v) in vals.iter().enumerate() {
             assert_eq!(pa.get(i), v);
