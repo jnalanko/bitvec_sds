@@ -20,18 +20,16 @@ impl PackedArray {
         }
     }
 
-    fn with_values(values: &[i64], bits_per_element: usize) -> Self {
+    fn with_values(values: &[u64], bits_per_element: usize) -> Self {
         assert!(bits_per_element > 0 && bits_per_element <= 64);
         let mut data = BitVec::with_capacity(values.len() * bits_per_element);
         for &v in values {
-            debug_assert!(v >= 0, "negative value {v} cannot be stored");
             debug_assert!(
-                bits_per_element == 64 || v < (1i64 << bits_per_element),
+                bits_per_element == 64 || v < (1u64 << bits_per_element),
                 "value {v} does not fit in {bits_per_element} bits"
             );
-            let bits = v as u64;
             for b in 0..bits_per_element {
-                data.push((bits >> b) & 1 != 0);
+                data.push((v >> b) & 1 != 0);
             }
         }
         Self {
@@ -74,16 +72,15 @@ impl PackedArray {
 
 /// Minimum number of bits needed to represent `max_val` (unsigned).
 /// Returns 1 for max_val == 0 or 1.
-fn bits_for_max(max_val: i64) -> usize {
-    assert!(max_val >= 0);
+fn bits_for_max(max_val: u64) -> usize {
     if max_val <= 1 {
         return 1;
     }
-    64 - (max_val as u64).leading_zeros() as usize
+    64 - max_val.leading_zeros() as usize
 }
 
 impl IntArray for PackedArray {
-    fn with_values(values: &[i64], bits_per_element: usize) -> Self {
+    fn with_values(values: &[u64], bits_per_element: usize) -> Self {
         PackedArray::with_values(values, bits_per_element)
     }
 
@@ -119,7 +116,7 @@ impl<A: IntArray> RmqTree<A> {
     ///
     /// * `block_bits` – each block has `2^block_bits` elements.
     /// * All values must be non-negative.
-    pub fn new(values: &[i64], block_bits: usize) -> Self {
+    pub fn new(values: &[u64], block_bits: usize) -> Self {
         let n = values.len();
         assert!(n > 0, "values must be non-empty");
 
@@ -127,7 +124,7 @@ impl<A: IntArray> RmqTree<A> {
         let block_mask: usize = block_len - 1;
 
         // Determine bits per element from the maximum value (and the sentinel `n`).
-        let max_val = values.iter().copied().max().unwrap().max(n as i64);
+        let max_val = values.iter().copied().max().unwrap().max(n as u64);
         let bpe = bits_for_max(max_val);
 
         let x = A::with_values(values, bpe);
@@ -140,9 +137,9 @@ impl<A: IntArray> RmqTree<A> {
 
         // Build tree: indices [tree_size .. 2*tree_size) are leaves.
         // Sentinel value for empty leaves is `n` (larger than any real value).
-        let sentinel = n as i64;
+        let sentinel = n as u64;
         let total = tree_size << 1;
-        let mut tree_vals: Vec<i64> = vec![sentinel; total];
+        let mut tree_vals: Vec<u64> = vec![sentinel; total];
 
         // Fill leaves with block minima.
         let mut block_idx = 0usize;
@@ -374,11 +371,11 @@ mod tests {
 
     #[test]
     fn packed_array_roundtrip() {
-        let vals: Vec<i64> = vec![0, 1, 2, 3, 15, 7, 8, 14];
+        let vals: Vec<u64> = vec![0, 1, 2, 3, 15, 7, 8, 14];
         let pa = PackedArray::with_values(&vals, 4);
         assert_eq!(pa.len(), vals.len());
         for (i, &v) in vals.iter().enumerate() {
-            assert_eq!(pa.get(i), v);
+            assert_eq!(pa.get(i), v as i64);
         }
     }
 
@@ -407,13 +404,13 @@ mod tests {
 
     // ── RMQ tests ──────────────────────────────────────────────────────
 
-    fn brute_rmq(vals: &[i64], i: usize, j: usize) -> i64 {
-        vals[i..=j].iter().copied().min().unwrap()
+    fn brute_rmq(vals: &[u64], i: usize, j: usize) -> i64 {
+        vals[i..=j].iter().copied().min().unwrap() as i64
     }
 
     #[test]
     fn rmq_small() {
-        let vals: Vec<i64> = vec![5, 3, 7, 1, 4, 6, 2, 8];
+        let vals: Vec<u64> = vec![5, 3, 7, 1, 4, 6, 2, 8];
         let tree = RmqTree::<PackedArray>::new(&vals, 1); // block size = 2
         for i in 0..vals.len() {
             for j in i..vals.len() {
@@ -428,14 +425,14 @@ mod tests {
 
     #[test]
     fn rmq_single_element() {
-        let vals: Vec<i64> = vec![42];
+        let vals: Vec<u64> = vec![42];
         let tree = RmqTree::<PackedArray>::new(&vals, 2);
         assert_eq!(tree.rmq(0, 0), 42);
     }
 
     #[test]
     fn rmq_all_same() {
-        let vals: Vec<i64> = vec![5; 20];
+        let vals: Vec<u64> = vec![5; 20];
         let tree = RmqTree::<PackedArray>::new(&vals, 2);
         assert_eq!(tree.rmq(0, 19), 5);
         assert_eq!(tree.rmq(3, 15), 5);
@@ -444,8 +441,8 @@ mod tests {
     #[test]
     fn rmq_large_exhaustive() {
         // Use a non-trivial sequence and block size 3 (block_len = 8).
-        let vals: Vec<i64> = (0..200)
-            .map(|i| ((i * 37 + 13) % 100) as i64)
+        let vals: Vec<u64> = (0..200)
+            .map(|i| ((i * 37 + 13) % 100) as u64)
             .collect();
         let tree = RmqTree::<PackedArray>::new(&vals, 3);
         // Test a selection of ranges.
@@ -463,25 +460,25 @@ mod tests {
     #[test]
     fn rmq_spanning_many_blocks() {
         // 1024 elements, block size 4 (block_len=16), query the full range.
-        let vals: Vec<i64> = (0..1024).rev().collect();
+        let vals: Vec<u64> = (0..1024).rev().collect();
         let tree = RmqTree::<PackedArray>::new(&vals, 4);
         assert_eq!(tree.rmq(0, 1023), 0);
-        assert_eq!(tree.rmq(0, 500), vals[500]);
+        assert_eq!(tree.rmq(0, 500), vals[500] as i64);
         assert_eq!(tree.rmq(500, 1023), 0);
     }
 
     // ── PSV tests ──────────────────────────────────────────────────────
 
-    fn brute_psv(vals: &[i64], i: usize, ub: i64) -> Option<usize> {
-        (0..i).rev().find(|&j| vals[j] < ub)
+    fn brute_psv(vals: &[u64], i: usize, ub: i64) -> Option<usize> {
+        (0..i).rev().find(|&j| (vals[j] as i64) < ub)
     }
 
     #[test]
     fn psv_basic() {
-        let vals: Vec<i64> = vec![5, 3, 7, 1, 4, 6, 2, 8];
+        let vals: Vec<u64> = vec![5, 3, 7, 1, 4, 6, 2, 8];
         let tree = RmqTree::<PackedArray>::new(&vals, 1);
         for i in 0..vals.len() {
-            let ub = vals[i];
+            let ub = vals[i] as i64;
             assert_eq!(
                 tree.psv(i, ub),
                 brute_psv(&vals, i, ub),
@@ -492,7 +489,7 @@ mod tests {
 
     #[test]
     fn psv_no_match() {
-        let vals: Vec<i64> = vec![10, 20, 30, 40];
+        let vals: Vec<u64> = vec![10, 20, 30, 40];
         let tree = RmqTree::<PackedArray>::new(&vals, 1);
         // No element < 10 exists before index 3.
         assert_eq!(tree.psv(3, 10), None);
@@ -502,12 +499,12 @@ mod tests {
 
     #[test]
     fn psv_exhaustive() {
-        let vals: Vec<i64> = (0..150)
-            .map(|i| ((i * 37 + 13) % 100) as i64)
+        let vals: Vec<u64> = (0..150)
+            .map(|i| ((i * 37 + 13) % 100) as u64)
             .collect();
         let tree = RmqTree::<PackedArray>::new(&vals, 2);
         for i in 0..vals.len() {
-            let ub = vals[i];
+            let ub = vals[i] as i64;
             assert_eq!(
                 tree.psv(i, ub),
                 brute_psv(&vals, i, ub),
@@ -518,16 +515,16 @@ mod tests {
 
     // ── NSV tests ──────────────────────────────────────────────────────
 
-    fn brute_nsv(vals: &[i64], i: usize, ub: i64) -> Option<usize> {
-        ((i + 1)..vals.len()).find(|&j| vals[j] < ub)
+    fn brute_nsv(vals: &[u64], i: usize, ub: i64) -> Option<usize> {
+        ((i + 1)..vals.len()).find(|&j| (vals[j] as i64) < ub)
     }
 
     #[test]
     fn nsv_basic() {
-        let vals: Vec<i64> = vec![5, 3, 7, 1, 4, 6, 2, 8];
+        let vals: Vec<u64> = vec![5, 3, 7, 1, 4, 6, 2, 8];
         let tree = RmqTree::<PackedArray>::new(&vals, 1);
         for i in 0..vals.len() {
-            let ub = vals[i];
+            let ub = vals[i] as i64;
             assert_eq!(
                 tree.nsv(i, ub),
                 brute_nsv(&vals, i, ub),
@@ -538,7 +535,7 @@ mod tests {
 
     #[test]
     fn nsv_no_match() {
-        let vals: Vec<i64> = vec![10, 20, 30, 40];
+        let vals: Vec<u64> = vec![10, 20, 30, 40];
         let tree = RmqTree::<PackedArray>::new(&vals, 1);
         assert_eq!(tree.nsv(0, 10), None);
         assert_eq!(tree.nsv(3, 1), None);
@@ -546,12 +543,12 @@ mod tests {
 
     #[test]
     fn nsv_exhaustive() {
-        let vals: Vec<i64> = (0..150)
-            .map(|i| ((i * 37 + 13) % 100) as i64)
+        let vals: Vec<u64> = (0..150)
+            .map(|i| ((i * 37 + 13) % 100) as u64)
             .collect();
         let tree = RmqTree::<PackedArray>::new(&vals, 2);
         for i in 0..vals.len() {
-            let ub = vals[i];
+            let ub = vals[i] as i64;
             assert_eq!(
                 tree.nsv(i, ub),
                 brute_nsv(&vals, i, ub),
@@ -565,44 +562,44 @@ mod tests {
     #[test]
     fn descending_sequence() {
         // [63, 62, 61, ..., 0]
-        let vals: Vec<i64> = (0..64).rev().collect();
+        let vals: Vec<u64> = (0..64).rev().collect();
         let tree = RmqTree::<PackedArray>::new(&vals, 2);
         // All previous elements are larger, so PSV should be None.
         for i in 0..64 {
-            assert_eq!(tree.psv(i, vals[i]), None, "psv({i})");
+            assert_eq!(tree.psv(i, vals[i] as i64), None, "psv({i})");
         }
         // Each next element is smaller, so NSV should find it.
         for i in 0..63 {
-            assert_eq!(tree.nsv(i, vals[i]), Some(i + 1), "nsv({i})");
+            assert_eq!(tree.nsv(i, vals[i] as i64), Some(i + 1), "nsv({i})");
         }
-        assert_eq!(tree.nsv(63, vals[63]), None);
+        assert_eq!(tree.nsv(63, vals[63] as i64), None);
     }
 
     #[test]
     fn ascending_sequence() {
         // [0, 1, 2, ..., 63]
-        let vals: Vec<i64> = (0..64).collect();
+        let vals: Vec<u64> = (0..64).collect();
         let tree = RmqTree::<PackedArray>::new(&vals, 2);
         // Each previous element is smaller, so PSV finds it.
-        assert_eq!(tree.psv(0, vals[0]), None);
+        assert_eq!(tree.psv(0, vals[0] as i64), None);
         for i in 1..64 {
-            assert_eq!(tree.psv(i, vals[i]), Some(i - 1), "psv({i})");
+            assert_eq!(tree.psv(i, vals[i] as i64), Some(i - 1), "psv({i})");
         }
         // All later elements are larger, so NSV should be None.
         for i in 0..64 {
-            assert_eq!(tree.nsv(i, vals[i]), None, "nsv({i})");
+            assert_eq!(tree.nsv(i, vals[i] as i64), None, "nsv({i})");
         }
     }
 
     #[test]
     fn various_block_sizes() {
-        let vals: Vec<i64> = (0..300)
-            .map(|i| ((i * 53 + 7) % 200) as i64)
+        let vals: Vec<u64> = (0..300)
+            .map(|i| ((i * 53 + 7) % 200) as u64)
             .collect();
         for block_bits in 1..=5 {
             let tree = RmqTree::<PackedArray>::new(&vals, block_bits);
             // Spot-check a few RMQs.
-            assert_eq!(tree.rmq(0, vals.len() - 1), *vals.iter().min().unwrap());
+            assert_eq!(tree.rmq(0, vals.len() - 1), *vals.iter().min().unwrap() as i64);
             assert_eq!(tree.rmq(10, 50), brute_rmq(&vals, 10, 50));
             assert_eq!(tree.rmq(100, 299), brute_rmq(&vals, 100, 299));
         }

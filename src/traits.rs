@@ -190,12 +190,12 @@ pub fn count_args_by_words<P: SelectTrait>(bv: &BitVec<u64, Lsb0>) -> usize {
 
 /// Trait for integer arrays that support construction from a slice and indexed access.
 pub trait IntArray {
-    fn with_values(values: &[i64], bits_per_element: usize) -> Self;
+    fn with_values(values: &[u64], bits_per_element: usize) -> Self;
     fn get(&self, index: usize) -> i64;
 }
 
 impl IntArray for Vec<u8> {
-    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+    fn with_values(values: &[u64], _bits_per_element: usize) -> Self {
         values.iter().map(|&v| v as u8).collect()
     }
 
@@ -205,7 +205,7 @@ impl IntArray for Vec<u8> {
 }
 
 impl IntArray for Vec<u16> {
-    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+    fn with_values(values: &[u64], _bits_per_element: usize) -> Self {
         values.iter().map(|&v| v as u16).collect()
     }
 
@@ -215,7 +215,7 @@ impl IntArray for Vec<u16> {
 }
 
 impl IntArray for Vec<u32> {
-    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+    fn with_values(values: &[u64], _bits_per_element: usize) -> Self {
         values.iter().map(|&v| v as u32).collect()
     }
 
@@ -225,7 +225,7 @@ impl IntArray for Vec<u32> {
 }
 
 impl IntArray for Vec<u64> {
-    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+    fn with_values(values: &[u64], _bits_per_element: usize) -> Self {
         values.iter().map(|&v| v as u64).collect()
     }
 
