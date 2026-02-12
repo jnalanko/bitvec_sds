@@ -313,3 +313,15 @@ impl RandomAccessU64 for &[u64] {
         self[idx]
     }
 }
+
+// Allow passing references easily (&T where T: RandomAccessU32).
+impl<T: RandomAccessU64 + ?Sized> RandomAccessU64 for &T {
+    #[inline]
+    fn len(&self) -> usize {
+        (*self).len()
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u64 {
+        (*self).get(idx)
+    }
+}
