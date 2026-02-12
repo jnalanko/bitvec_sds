@@ -901,7 +901,7 @@ mod stress {
         let a = gen_adversarial_array(&mut rng, n, k);
 
         let wt = WaveletTree::new(
-            &a, 0, k, 
+            a.as_slice(), 0, k, 
             RankSupportV::<Pat1>::new, 
             |bv| SelectBinarySearchOverRank {
                 rs : RankSupportV::<Pat1>::new(bv)
@@ -998,7 +998,7 @@ mod stress {
         let a = gen_adversarial_array(&mut rng, n, k);
 
         let wt = WaveletTree::new(
-            &a, 0, k,
+            a.as_slice(), 0, k,
             RankSupportV::<Pat1>::new,
             |bv| SelectBinarySearchOverRank {
                 rs: RankSupportV::<Pat1>::new(bv),
@@ -1038,7 +1038,7 @@ mod stress {
         let a = gen_adversarial_array(&mut rng, n, k);
 
         let wt = WaveletTree::new(
-            &a, 0, k,
+            a.as_slice(), 0, k,
             RankSupportV::<Pat1>::new,
             |bv| SelectBinarySearchOverRank {
                 rs: RankSupportV::<Pat1>::new(bv),

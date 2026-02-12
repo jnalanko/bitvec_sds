@@ -3,9 +3,12 @@ use bitvec::prelude::*;
 use rand_xoshiro::{Xoshiro256PlusPlus, rand_core::{RngCore, SeedableRng}};
 
 use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, Sel1}};
+use bitvec_sds::rmq_tree::{RmqTree, PackedArray};
 use simple_sds_sbwt::{ops::{Rank, Select}, serialize::Serialize};
 
 fn main() {
+
+    benchmark_rmq_tree();
 
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(123);
     let n = 8_000_000_000usize; // Is a multiple of 64
@@ -152,6 +155,113 @@ fn benchmark_select(bv: Arc<BitVec<u64, Lsb0>>) {
     let avg_time_per_query = elapsed.as_secs_f64() / n_queries as f64;
     println!("Average time per select query: {:.2} ns", avg_time_per_query * 1e9);
 
+}
+
+fn benchmark_rmq_tree() {
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+    let n = 1_000_000_000usize;
+
+    println!("Generating {n} random u8 values...");
+    let mut values: Vec<u8> = Vec::with_capacity(n);
+    for _ in 0..n {
+        values.push((rng.next_u64() % 256) as u8);
+    }
+
+    println!("Building RmqTree<Vec<u8>>...");
+    let start = std::time::Instant::now();
+    let tree_vec: RmqTree<Vec<u8>> = RmqTree::new(values.as_slice(), 4);
+    let elapsed = start.elapsed();
+    println!("Build time (Vec<u8>): {:.2} s", elapsed.as_secs_f64());
+
+    println!("Building RmqTree<PackedArray>...");
+    let start = std::time::Instant::now();
+    let tree_packed: RmqTree<PackedArray> = RmqTree::new(&values.as_slice(), 4);
+    let elapsed = start.elapsed();
+    println!("Build time (PackedArray): {:.2} s", elapsed.as_secs_f64());
+
+    drop(values);
+
+    let n_queries = 10_000_000;
+    println!("Generating {n_queries} random RMQ query pairs...");
+    let mut queries: Vec<(usize, usize)> = Vec::with_capacity(n_queries);
+    for _ in 0..n_queries {
+        let a = rng.next_u64() as usize % n;
+        let b = rng.next_u64() as usize % n;
+        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+        queries.push((lo, hi));
+    }
+
+    println!("Running {n_queries} RMQ queries on Vec<u8>...");
+    let start = std::time::Instant::now();
+    let mut sum: u64 = 0;
+    for &(i, j) in &queries {
+        sum += tree_vec.rmq(i, j);
+    }
+    let elapsed = start.elapsed();
+    println!("Sum: {sum}");
+    println!("Average RMQ time (Vec<u8>): {:.2} ns", elapsed.as_secs_f64() / n_queries as f64 * 1e9);
+
+    println!("Running {n_queries} RMQ queries on PackedArray...");
+    let start = std::time::Instant::now();
+    let mut sum: u64 = 0;
+    for &(i, j) in &queries {
+        sum += tree_packed.rmq(i, j);
+    }
+    let elapsed = start.elapsed();
+    println!("Sum: {sum}");
+    println!("Average RMQ time (PackedArray): {:.2} ns", elapsed.as_secs_f64() / n_queries as f64 * 1e9);
+
+    // PSV queries
+    println!("Generating {n_queries} random PSV queries...");
+    let mut psv_queries: Vec<(usize, u64)> = Vec::with_capacity(n_queries);
+    for _ in 0..n_queries {
+        let i = rng.next_u64() as usize % n;
+        let ub = (rng.next_u64() % 256) as u64;
+        psv_queries.push((i, ub));
+    }
+
+    println!("Running {n_queries} PSV queries on Vec<u8>...");
+    let start = std::time::Instant::now();
+    let mut sum: u64 = 0;
+    for &(i, ub) in &psv_queries {
+        sum += tree_vec.psv(i, ub).unwrap_or(0) as u64;
+    }
+    let elapsed = start.elapsed();
+    println!("Sum: {sum}");
+    println!("Average PSV time (Vec<u8>): {:.2} ns", elapsed.as_secs_f64() / n_queries as f64 * 1e9);
+
+    println!("Running {n_queries} PSV queries on PackedArray...");
+    let start = std::time::Instant::now();
+    let mut sum: u64 = 0;
+    for &(i, ub) in &psv_queries {
+        sum += tree_packed.psv(i, ub).unwrap_or(0) as u64;
+    }
+    let elapsed = start.elapsed();
+    println!("Sum: {sum}");
+    println!("Average PSV time (PackedArray): {:.2} ns", elapsed.as_secs_f64() / n_queries as f64 * 1e9);
+
+    // NSV queries
+    println!("Running {n_queries} NSV queries on Vec<u8>...");
+    let start = std::time::Instant::now();
+    let mut sum: u64 = 0;
+    for &(i, ub) in &psv_queries {
+        sum += tree_vec.nsv(i, ub).unwrap_or(0) as u64;
+    }
+    let elapsed = start.elapsed();
+    println!("Sum: {sum}");
+    println!("Average NSV time (Vec<u8>): {:.2} ns", elapsed.as_secs_f64() / n_queries as f64 * 1e9);
+
+    println!("Running {n_queries} NSV queries on PackedArray...");
+    let start = std::time::Instant::now();
+    let mut sum: u64 = 0;
+    for &(i, ub) in &psv_queries {
+        sum += tree_packed.nsv(i, ub).unwrap_or(0) as u64;
+    }
+    let elapsed = start.elapsed();
+    println!("Sum: {sum}");
+    println!("Average NSV time (PackedArray): {:.2} ns", elapsed.as_secs_f64() / n_queries as f64 * 1e9);
+
+    println!();
 }
 
 fn bitvec_to_simple_sds_raw_bitvec(mut bv: bitvec::vec::BitVec::<u64, Lsb0>) -> simple_sds_sbwt::raw_vector::RawVector {

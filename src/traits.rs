@@ -190,47 +190,115 @@ pub fn count_args_by_words<P: SelectTrait>(bv: &BitVec<u64, Lsb0>) -> usize {
 
 /// Trait for integer arrays that support construction from a slice and indexed access.
 pub trait IntArray {
-    fn with_values(values: &impl RandomAccessU64) -> Self;
+    fn with_values(values: impl RandomAccessU64) -> Self;
+    fn with_init_value(value: usize, len: usize) -> Self;
     fn get(&self, index: usize) -> u64;
+    fn set(&mut self, index: usize, value: u64);
+    fn len(&self) -> usize;
+    fn max_supported_value(&self) -> usize;
 }
 
 impl IntArray for Vec<u8> {
-    fn with_values(values: &impl RandomAccessU64) -> Self {
+    fn with_values(values: impl RandomAccessU64) -> Self {
         (0..values.len()).map(|i| values.get(i) as u8).collect()
+    }
+
+    fn with_init_value(value: usize, len: usize) -> Self {
+        vec![value as u8; len]
     }
 
     fn get(&self, index: usize) -> u64 {
         self[index] as u64
+    }
+
+    fn set(&mut self, index: usize, value: u64) {
+        self[index] = value as u8;
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn max_supported_value(&self) -> usize {
+        u8::MAX as usize
     }
 }
 
 impl IntArray for Vec<u16> {
-    fn with_values(values: &impl RandomAccessU64) -> Self {
+    fn with_values(values: impl RandomAccessU64) -> Self {
         (0..values.len()).map(|i| values.get(i) as u16).collect()
+    }
+
+    fn with_init_value(value: usize, len: usize) -> Self {
+        vec![value as u16; len]
     }
 
     fn get(&self, index: usize) -> u64 {
         self[index] as u64
+    }
+
+    fn set(&mut self, index: usize, value: u64) {
+        self[index] = value as u16;
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn max_supported_value(&self) -> usize {
+        u16::MAX as usize
     }
 }
 
 impl IntArray for Vec<u32> {
-    fn with_values(values: &impl RandomAccessU64) -> Self {
+    fn with_values(values: impl RandomAccessU64) -> Self {
         (0..values.len()).map(|i| values.get(i) as u32).collect()
+    }
+
+    fn with_init_value(value: usize, len: usize) -> Self {
+        vec![value as u32; len]
     }
 
     fn get(&self, index: usize) -> u64 {
         self[index] as u64
     }
+
+    fn set(&mut self, index: usize, value: u64) {
+        self[index] = value as u32;
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn max_supported_value(&self) -> usize {
+        u32::MAX as usize
+    }
 }
 
 impl IntArray for Vec<u64> {
-    fn with_values(values: &impl RandomAccessU64) -> Self {
+    fn with_values(values: impl RandomAccessU64) -> Self {
         (0..values.len()).map(|i| values.get(i)).collect()
+    }
+
+    fn with_init_value(value: usize, len: usize) -> Self {
+        vec![value as u64; len]
     }
 
     fn get(&self, index: usize) -> u64 {
         self[index]
+    }
+
+    fn set(&mut self, index: usize, value: u64) {
+        self[index] = value;
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn max_supported_value(&self) -> usize {
+        u64::MAX as usize
     }
 }
 
@@ -239,6 +307,17 @@ impl IntArray for Vec<u64> {
 pub trait RandomAccessU32 {
     fn len(&self) -> usize;
     fn get(&self, idx: usize) -> u32;
+}
+
+impl RandomAccessU32 for &[u32] {
+    #[inline]
+    fn len(&self) -> usize {
+        <[u32]>::len(self)
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u32 {
+        self[idx]
+    }
 }
 
 // Allow passing references easily (&T where T: RandomAccessU32).
@@ -250,51 +329,6 @@ impl<T: RandomAccessU32 + ?Sized> RandomAccessU32 for &T {
     #[inline]
     fn get(&self, idx: usize) -> u32 {
         (*self).get(idx)
-    }
-}
-
-// Common impls
-impl RandomAccessU32 for [u32] {
-    #[inline]
-    fn len(&self) -> usize {
-        <[u32]>::len(self)
-    }
-    #[inline]
-    fn get(&self, idx: usize) -> u32 {
-        self[idx]
-    }
-}
-
-impl RandomAccessU32 for Vec<u32> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.len()
-    }
-    #[inline]
-    fn get(&self, idx: usize) -> u32 {
-        self[idx]
-    }
-}
-
-impl RandomAccessU32 for Box<[u32]> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.as_ref().len()
-    }
-    #[inline]
-    fn get(&self, idx: usize) -> u32 {
-        self.as_ref()[idx]
-    }
-}
-
-impl RandomAccessU32 for Arc<[u32]> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.as_ref().len()
-    }
-    #[inline]
-    fn get(&self, idx: usize) -> u32 {
-        self.as_ref()[idx]
     }
 }
 
@@ -311,6 +345,39 @@ impl RandomAccessU64 for &[u64] {
     #[inline]
     fn get(&self, idx: usize) -> u64 {
         self[idx]
+    }
+}
+
+impl RandomAccessU64 for &[u32] {
+    #[inline]
+    fn len(&self) -> usize {
+        <[u32]>::len(self)
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u64 {
+        self[idx] as u64
+    }
+}
+
+impl RandomAccessU64 for &[u16] {
+    #[inline]
+    fn len(&self) -> usize {
+        <[u16]>::len(self)
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u64 {
+        self[idx] as u64
+    }
+}
+
+impl RandomAccessU64 for &[u8] {
+    #[inline]
+    fn len(&self) -> usize {
+        <[u8]>::len(self)
+    }
+    #[inline]
+    fn get(&self, idx: usize) -> u64 {
+        self[idx] as u64
     }
 }
 
