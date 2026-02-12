@@ -1,5 +1,7 @@
 use bitvec::prelude::*;
 
+use crate::traits::IntArray;
+
 /// A compact array storing fixed-width integers in a bitvector.
 /// Each element uses `bits_per_element` bits.
 pub struct PackedArray {
@@ -78,12 +80,6 @@ fn bits_for_max(max_val: i64) -> usize {
         return 1;
     }
     64 - (max_val as u64).leading_zeros() as usize
-}
-
-/// Trait for integer arrays that support construction from a slice and indexed access.
-pub trait IntArray {
-    fn with_values(values: &[i64], bits_per_element: usize) -> Self;
-    fn get(&self, index: usize) -> i64;
 }
 
 impl IntArray for PackedArray {

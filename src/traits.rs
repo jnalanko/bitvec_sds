@@ -188,6 +188,52 @@ pub fn count_args_by_words<P: SelectTrait>(bv: &BitVec<u64, Lsb0>) -> usize {
     sum as usize
 }
 
+/// Trait for integer arrays that support construction from a slice and indexed access.
+pub trait IntArray {
+    fn with_values(values: &[i64], bits_per_element: usize) -> Self;
+    fn get(&self, index: usize) -> i64;
+}
+
+impl IntArray for Vec<u8> {
+    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+        values.iter().map(|&v| v as u8).collect()
+    }
+
+    fn get(&self, index: usize) -> i64 {
+        self[index] as i64
+    }
+}
+
+impl IntArray for Vec<u16> {
+    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+        values.iter().map(|&v| v as u16).collect()
+    }
+
+    fn get(&self, index: usize) -> i64 {
+        self[index] as i64
+    }
+}
+
+impl IntArray for Vec<u32> {
+    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+        values.iter().map(|&v| v as u32).collect()
+    }
+
+    fn get(&self, index: usize) -> i64 {
+        self[index] as i64
+    }
+}
+
+impl IntArray for Vec<u64> {
+    fn with_values(values: &[i64], _bits_per_element: usize) -> Self {
+        values.iter().map(|&v| v as u64).collect()
+    }
+
+    fn get(&self, index: usize) -> i64 {
+        self[index] as i64
+    }
+}
+
 /// Random-access u32 sequence used for construction.
 /// Must be stable across calls (same len + same values for same indices).
 pub trait RandomAccessU32 {
